@@ -252,5 +252,8 @@ fn test_build_menu_records_custom_id_mapping_for_dispatch() {
 
     // Verify via the snapshot (not the global resolve, which is racy under
     // parallel test runners like tarpaulin).
-    assert_eq!(mapping.get(&internal_id).map(|s| s.as_str()), Some("menu-custom-open"));
+    assert_eq!(
+        mapping.get(&internal_id).map(|s| s.as_str()),
+        Some("menu-custom-open")
+    );
 }
