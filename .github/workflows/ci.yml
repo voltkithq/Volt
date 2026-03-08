@@ -64,6 +64,11 @@ jobs:
       - name: TypeScript lint
         run: pnpm lint
 
+      - name: Build TypeScript dependencies for typecheck
+        run: |
+          pnpm --filter voltkit run build
+          pnpm --filter @voltkit/volt-test run build
+
       - name: TypeScript typecheck
         run: |
           pnpm --filter voltkit run typecheck
