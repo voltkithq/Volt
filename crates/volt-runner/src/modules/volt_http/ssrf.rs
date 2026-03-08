@@ -27,7 +27,10 @@ pub(super) fn resolve_and_validate_host(
     Ok(addrs[0])
 }
 
-pub(super) fn normalize_request_url(url: &str, allow_private_networks: bool) -> Result<String, String> {
+pub(super) fn normalize_request_url(
+    url: &str,
+    allow_private_networks: bool,
+) -> Result<String, String> {
     let trimmed = url.trim();
     if trimmed.is_empty() {
         return Err("http.fetch request URL must not be empty".to_string());
