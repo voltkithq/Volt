@@ -62,18 +62,19 @@ describe('build runtime artifact resolution helpers', () => {
       'win32',
     );
 
-    const result = __testOnly.selectRuntimeArtifact(candidates, 'C:\\repo\\target\\release', (path) =>
+    const releaseDir = join(tmpdir(), 'volt-build-resolve-test');
+    const result = __testOnly.selectRuntimeArtifact(candidates, releaseDir, (path) =>
       path.endsWith('volt_napi.dll'),
     );
 
     expect(result.artifact).toEqual({
       kind: 'cdylib',
       targetName: 'volt_napi',
-      sourcePath: 'C:\\repo\\target\\release\\volt_napi.dll',
+      sourcePath: join(releaseDir, 'volt_napi.dll'),
     });
     expect(result.attemptedPaths).toEqual([
-      'C:\\repo\\target\\release\\volt_runner.exe',
-      'C:\\repo\\target\\release\\volt_napi.dll',
+      join(releaseDir, 'volt_runner.exe'),
+      join(releaseDir, 'volt_napi.dll'),
     ]);
   });
 

@@ -496,6 +496,9 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
 
+      - name: Build volt-napi (native binding)
+        run: cargo build -p volt-napi
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
