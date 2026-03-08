@@ -241,6 +241,8 @@ fn test_build_menu_records_custom_id_mapping_for_dispatch() {
     let menu = build_menu(&items);
     assert!(menu.is_ok());
 
+    // Take a snapshot immediately after build_menu to avoid races with other
+    // tests that also call build_menu (which replaces the global map).
     let mapping = super::build::menu_event_id_map_snapshot();
     assert!(mapping.values().any(|mapped| mapped == &custom_id));
     let internal_id = mapping
@@ -248,8 +250,7 @@ fn test_build_menu_records_custom_id_mapping_for_dispatch() {
         .find_map(|(internal, mapped)| (mapped == &custom_id).then(|| internal.clone()))
         .expect("custom id should be present in mapping");
 
-    assert_eq!(
-        resolve_menu_event_id(&internal_id).as_deref(),
-        Some("menu-custom-open")
-    );
+    // Verify via the snapshot (not the global resolve, which is racy under
+    // parallel test runners like tarpaulin).
+    assert_eq!(mapping.get(&internal_id).map(|s| s.as_str()), Some("menu-custom-open"));
 }

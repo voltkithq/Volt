@@ -1,8 +1,9 @@
 use std::sync::mpsc;
 use std::sync::{Mutex, OnceLock};
-use std::thread;
 
-use tao::event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy};
+#[cfg(not(target_os = "linux"))]
+use tao::event_loop::ControlFlow;
+use tao::event_loop::{EventLoopBuilder, EventLoopProxy};
 use volt_core::app::AppEvent;
 use volt_core::command::{self, CommandEnvelope};
 
@@ -38,7 +39,7 @@ pub fn shared_event_loop_proxy() -> EventLoopProxy<AppEvent> {
             #[cfg(not(target_os = "linux"))]
             {
                 let (proxy_tx, proxy_rx) = mpsc::channel();
-                thread::spawn(move || {
+                std::thread::spawn(move || {
                     let mut builder = EventLoopBuilder::<AppEvent>::with_user_event();
                     #[cfg(target_os = "windows")]
                     {
