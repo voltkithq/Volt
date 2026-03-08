@@ -1,0 +1,10 @@
+node_modules
+dist
+dist-volt
+target
+coverage
+.turbo
+.next
+pnpm-lock.yaml
+Cargo.lock
+*.rs

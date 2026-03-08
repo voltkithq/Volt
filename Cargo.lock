@@ -5120,6 +5120,7 @@ dependencies = [
  "base64",
  "ed25519-dalek",
  "global-hotkey",
+ "gtk",
  "log",
  "muda",
  "notify-rust",

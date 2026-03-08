@@ -32,7 +32,8 @@ pub(super) fn apply_menu_to_windows(
 
         for (window, _) in windows.values() {
             let gtk_window = window.inner().gtk_window();
-            menu.init_for_gtk_window(gtk_window, None::<&gtk::Container>)
+            let container: Option<&gtk::ApplicationWindow> = None;
+            menu.init_for_gtk_window(gtk_window, container)
                 .map_err(|e| format!("Failed to attach menu to GTK window: {e}"))?;
         }
     }

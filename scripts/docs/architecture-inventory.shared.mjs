@@ -60,7 +60,7 @@ export const TOP_LEVEL_PURPOSE = new Map([
 
 export const GROUP_PURPOSE = new Map([
   ['crates/volt-core', 'Core Rust desktop runtime primitives (windowing, IPC, permissions, updater).'],
-  ['crates/volt-runner', 'Standalone runner binary hosting Boa runtime, modules, and IPC bridge.'],
+  ['crates/volt-runner', 'Standalone runner binary hosting QuickJS runtime, modules, and IPC bridge.'],
   ['crates/volt-updater-helper', 'Windows helper binary for safe in-place updates and rollback.'],
   ['crates/volt-napi', 'Node/N-API bridge used by development runtime.'],
   ['packages/volt', 'Framework API surface and TypeScript types consumed by apps.'],
