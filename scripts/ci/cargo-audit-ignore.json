@@ -15,7 +15,7 @@
     {
       "id": "RUSTSEC-2024-0429",
       "reason": "Transitive via gtk3 stack in wry/tao; glib 0.18 line has no patched release in crates.io yet.",
-      "reviewBy": "2026-06-30",
+      "reviewBy": "2026-06-30"
     },
     "RUSTSEC-2025-0057"
   ]

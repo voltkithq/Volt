@@ -2,20 +2,20 @@
 //! Verifies the full defense-in-depth chain against path-based attacks.
 
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 use volt_core::fs::{mkdir, read_dir, read_file_text, remove, safe_resolve, stat, write_file};
 
-/// Helper to create a temporary test sandbox.
+/// Helper to create a temporary test sandbox with a unique directory per call.
 fn create_sandbox() -> std::path::PathBuf {
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
     let dir = std::env::temp_dir().join(format!(
-        "volt_security_fs_integration_{}",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
+        "volt_security_fs_integration_{}_{}",
+        std::process::id(),
+        COUNTER.fetch_add(1, Ordering::Relaxed)
     ));
+    let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     dir
-}
 
 fn cleanup(dir: &Path) {
     let _ = std::fs::remove_dir_all(dir);

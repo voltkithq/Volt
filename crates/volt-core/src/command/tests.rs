@@ -17,6 +17,11 @@ fn test_event_loop_proxy() -> EventLoopProxy<crate::app::AppEvent> {
         use tao::platform::windows::EventLoopBuilderExtWindows;
         builder.with_any_thread(true);
     }
+    #[cfg(target_os = "linux")]
+    {
+        use tao::platform::unix::EventLoopBuilderExtUnix;
+        builder.with_any_thread(true);
+    }
     let event_loop = builder.build();
     event_loop.create_proxy()
 }
