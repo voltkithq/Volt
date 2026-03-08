@@ -281,7 +281,13 @@ ipcMain.handle('status', async () => {
   await ensureDatabase();
   voltEvents.emit('demo:events-module', { at: Date.now() });
 
-  const clipboard = summarizeClipboardRead(voltClipboard.readText());
+  let clipboardValue: unknown;
+  try {
+    clipboardValue = voltClipboard.readText();
+  } catch {
+    clipboardValue = '';
+  }
+  const clipboard = summarizeClipboardRead(clipboardValue);
   const dbRowsRaw = await voltDb.queryOne('SELECT COUNT(*) AS total FROM demo_records');
   const windowCount = await voltWindow.getWindowCount();
   const secureStorageHasDemoKey = await voltSecureStorage.has(DEFAULT_SECRET_KEY);

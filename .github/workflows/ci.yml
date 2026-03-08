@@ -538,9 +538,15 @@ jobs:
           pnpm --filter @voltkit/volt-cli run build
 
       - name: Run end-to-end smoke flow
+        shell: bash
         env:
           VOLT_E2E_RETRIES: "1"
-        run: node scripts/ci/e2e-smoke.mjs
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            xvfb-run --auto-servernum node scripts/ci/e2e-smoke.mjs
+          else
+            node scripts/ci/e2e-smoke.mjs
+          fi
 
       - name: Upload E2E artifacts
         if: always()
