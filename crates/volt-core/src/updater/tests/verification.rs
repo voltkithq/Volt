@@ -12,7 +12,7 @@ fn test_canonical_update_metadata_payload_is_stable() {
     let payload = super::super::verification::canonical_update_metadata_payload(&info);
     assert_eq!(
         payload,
-        b"volt-update-v1\01.2.3\0https://updates.example.com/app.exe\0abababababababababababababababababababababababababababababababab".to_vec()
+        b"volt-update-v1\x001.2.3\x00https://updates.example.com/app.exe\x00abababababababababababababababababababababababababababababababab".to_vec()
     );
 }
 

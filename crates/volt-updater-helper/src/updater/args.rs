@@ -7,12 +7,14 @@ pub(crate) enum UpdateMode {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub(crate) enum Args {
     Install(InstallArgs),
     Rollback(RollbackArgs),
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub(crate) struct InstallArgs {
     pub(crate) pid: u32,
     pub(crate) target_path: PathBuf,
@@ -22,6 +24,7 @@ pub(crate) struct InstallArgs {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub(crate) struct RollbackArgs {
     pub(crate) pid: u32,
     pub(crate) target_path: PathBuf,
