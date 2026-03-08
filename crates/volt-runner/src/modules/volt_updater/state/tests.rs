@@ -3,6 +3,7 @@ use std::fs;
 use std::sync::Mutex;
 
 use super::storage::{normalize_sha256_hex, now_unix_ms, read_json_file, write_json_atomic};
+#[allow(unused_imports)]
 use super::*;
 
 static STATE_TEST_LOCK: Mutex<()> = Mutex::new(());

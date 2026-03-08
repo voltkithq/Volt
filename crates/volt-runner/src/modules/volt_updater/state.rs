@@ -1,3 +1,6 @@
+// Most of this module is Windows-only; suppress dead_code on Linux.
+#![allow(dead_code, unused_imports)]
+
 use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::Duration;

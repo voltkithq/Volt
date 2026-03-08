@@ -1,3 +1,6 @@
+// Most consumers are Windows-only; suppress dead_code on Linux.
+#![allow(dead_code)]
+
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
