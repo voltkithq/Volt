@@ -79,6 +79,10 @@ export function buildScreenshotCommand(platform: string, screenshotPath: string)
   }
 
   if (platform === 'win32') {
+    // Embed the path directly in the script instead of relying on $args,
+    // because PowerShell -Command mode parses trailing arguments as
+    // expressions rather than passing them as $args.
+    const escapedPath = screenshotPath.replace(/'/g, "''");
     const captureScript = [
       'Add-Type -AssemblyName System.Windows.Forms',
       'Add-Type -AssemblyName System.Drawing',
@@ -86,7 +90,7 @@ export function buildScreenshotCommand(platform: string, screenshotPath: string)
       '$bitmap = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height',
       '$graphics = [System.Drawing.Graphics]::FromImage($bitmap)',
       '$graphics.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)',
-      '$bitmap.Save($args[0], [System.Drawing.Imaging.ImageFormat]::Png)',
+      `$bitmap.Save('${escapedPath}', [System.Drawing.Imaging.ImageFormat]::Png)`,
       '$graphics.Dispose()',
       '$bitmap.Dispose()',
     ].join('; ');
@@ -100,7 +104,6 @@ export function buildScreenshotCommand(platform: string, screenshotPath: string)
         'Bypass',
         '-Command',
         captureScript,
-        screenshotPath,
       ],
     };
   }

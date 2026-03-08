@@ -38,7 +38,8 @@ describe('artifact helpers', () => {
 
     const windows = buildScreenshotCommand('win32', 'C:\\temp\\out.png');
     expect(windows?.command).toBe('powershell');
-    expect(windows?.args).toContain('C:\\temp\\out.png');
+    const scriptArg = windows?.args?.find((a) => a.includes('CopyFromScreen'));
+    expect(scriptArg).toContain('C:\\temp\\out.png');
 
     const linux = buildScreenshotCommand('linux', '/tmp/out.png');
     expect(linux?.command).toBe('sh');
