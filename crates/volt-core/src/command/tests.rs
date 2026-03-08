@@ -11,19 +11,29 @@ fn test_guard() -> std::sync::MutexGuard<'static, ()> {
 }
 
 fn test_event_loop_proxy() -> EventLoopProxy<crate::app::AppEvent> {
-    let mut builder = EventLoopBuilder::<crate::app::AppEvent>::with_user_event();
-    #[cfg(target_os = "windows")]
-    {
-        use tao::platform::windows::EventLoopBuilderExtWindows;
-        builder.with_any_thread(true);
-    }
-    #[cfg(target_os = "linux")]
-    {
-        use tao::platform::unix::EventLoopBuilderExtUnix;
-        builder.with_any_thread(true);
-    }
-    let event_loop = builder.build();
-    event_loop.create_proxy()
+    // Reuse a single static event loop to avoid GTK D-Bus re-registration
+    // errors on Linux (only one GTK Application per process is allowed).
+    static PROXY: OnceLock<EventLoopProxy<crate::app::AppEvent>> = OnceLock::new();
+    PROXY
+        .get_or_init(|| {
+            let mut builder = EventLoopBuilder::<crate::app::AppEvent>::with_user_event();
+            #[cfg(target_os = "windows")]
+            {
+                use tao::platform::windows::EventLoopBuilderExtWindows;
+                builder.with_any_thread(true);
+            }
+            #[cfg(target_os = "linux")]
+            {
+                use tao::platform::unix::EventLoopBuilderExtUnix;
+                builder.with_any_thread(true);
+            }
+            let event_loop = builder.build();
+            let proxy = event_loop.create_proxy();
+            // Leak the event loop to keep GTK application alive for the process.
+            std::mem::forget(event_loop);
+            proxy
+        })
+        .clone()
 }
 
 #[test]
