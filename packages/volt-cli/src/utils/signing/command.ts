@@ -80,6 +80,6 @@ export function runSigningCommand(
       lines.push(`[volt] ${scope} stderr: ${stderr}`);
     }
 
-    throw new Error(lines.join('\n'));
+    throw new Error(lines.join('\n'), { cause: error });
   }
 }

@@ -44,6 +44,7 @@ async function loadWithJiti(configPath: string): Promise<VoltConfig | null> {
     }
     throw new Error(
       `[volt] Failed to initialize jiti while loading ${configPath}: ${err instanceof Error ? err.message : String(err)}`,
+      { cause: err },
     );
   }
 
@@ -60,6 +61,7 @@ async function loadWithJiti(configPath: string): Promise<VoltConfig | null> {
   } catch (err) {
     throw new Error(
       `[volt] Failed to load TypeScript config at ${configPath} via jiti: ${err instanceof Error ? err.message : String(err)}`,
+      { cause: err },
     );
   }
 }

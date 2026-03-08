@@ -180,7 +180,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
   } catch (err) {
     await gracefulCleanup(null);
     const message = err instanceof Error ? err.message : String(err);
-    throw new Error(`[volt] Failed to load backend entry for dev mode: ${message}`);
+    throw new Error(`[volt] Failed to load backend entry for dev mode: ${message}`, { cause: err });
   }
 
   disposeBackendBundle = backendLoadState.dispose;
