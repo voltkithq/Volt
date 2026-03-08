@@ -1,7 +1,8 @@
 use std::sync::mpsc;
 use std::sync::{Mutex, OnceLock};
+use std::thread;
 
-use tao::event_loop::{EventLoopBuilder, EventLoopProxy};
+use tao::event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy};
 use volt_core::app::AppEvent;
 use volt_core::command::{self, CommandEnvelope};
 
@@ -15,32 +16,46 @@ pub fn test_guard() -> std::sync::MutexGuard<'static, ()> {
 
 /// Returns a shared event loop proxy. Only one GTK event loop can exist per
 /// process on Linux, so all tests must share the same instance. The event
-/// loop is leaked to keep it alive for the process lifetime.
+/// loop runs in a dedicated thread and stays alive for the process lifetime.
 pub fn shared_event_loop_proxy() -> EventLoopProxy<AppEvent> {
     static PROXY: OnceLock<EventLoopProxy<AppEvent>> = OnceLock::new();
     PROXY
         .get_or_init(|| {
-            let mut builder = EventLoopBuilder::<AppEvent>::with_user_event();
-            #[cfg(target_os = "windows")]
+            // On Linux, create and run the event loop on the main/calling thread
+            // to avoid GTK MainContext ownership conflicts between threads.
+            // On other platforms, spawn a dedicated thread.
+            #[cfg(target_os = "linux")]
             {
-                use tao::platform::windows::EventLoopBuilderExtWindows;
-                builder.with_any_thread(true);
-            }
-            #[cfg(any(
-                target_os = "linux",
-                target_os = "dragonfly",
-                target_os = "freebsd",
-                target_os = "netbsd",
-                target_os = "openbsd"
-            ))]
-            {
+                let mut builder = EventLoopBuilder::<AppEvent>::with_user_event();
                 use tao::platform::unix::EventLoopBuilderExtUnix;
                 builder.with_any_thread(true);
+                let event_loop = builder.build();
+                let proxy = event_loop.create_proxy();
+                std::mem::forget(event_loop);
+                proxy
             }
-            let event_loop = builder.build();
-            let proxy = event_loop.create_proxy();
-            std::mem::forget(event_loop);
-            proxy
+
+            #[cfg(not(target_os = "linux"))]
+            {
+                let (proxy_tx, proxy_rx) = mpsc::channel();
+                thread::spawn(move || {
+                    let mut builder = EventLoopBuilder::<AppEvent>::with_user_event();
+                    #[cfg(target_os = "windows")]
+                    {
+                        use tao::platform::windows::EventLoopBuilderExtWindows;
+                        builder.with_any_thread(true);
+                    }
+                    let event_loop = builder.build();
+                    let proxy = event_loop.create_proxy();
+                    let _ = proxy_tx.send(proxy);
+                    event_loop.run(move |_, _, control_flow| {
+                        *control_flow = ControlFlow::Wait;
+                    });
+                });
+                proxy_rx
+                    .recv_timeout(std::time::Duration::from_secs(5))
+                    .expect("shared event loop proxy")
+            }
         })
         .clone()
 }

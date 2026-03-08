@@ -73,6 +73,7 @@ export async function terminateChildProcess(
       `[volt:test] failed to send SIGKILL (${reason}): ${
         error instanceof Error ? error.message : String(error)
       }`,
+      { cause: error },
     );
   }
 

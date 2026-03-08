@@ -117,6 +117,7 @@ async function loadWithJiti(configPath: string): Promise<VoltTestConfig | null> 
       `[volt:test] Failed to initialize jiti for ${configPath}: ${
         error instanceof Error ? error.message : String(error)
       }`,
+      { cause: error },
     );
   }
 
