@@ -1,0 +1,35 @@
+{
+  "name": "@voltkit/volt-cli",
+  "version": "0.1.0",
+  "license": "BSL-1.1",
+  "type": "module",
+  "bin": {
+    "volt": "dist/index.js"
+  },
+  "main": "dist/index.js",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "lint": "eslint \"src/**/*.{ts,mts,cts}\" --max-warnings 0",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@voltkit/volt-test": "workspace:*",
+    "commander": "^14.0.3",
+    "esbuild": "^0.25.0",
+    "vite": "^7.3.1",
+    "voltkit": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.2.3",
+    "@vitest/coverage-v8": "^4.0.18",
+    "typescript": "^5.7.0",
+    "vitest": "^4.0.18"
+  }
+}

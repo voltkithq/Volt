@@ -1,0 +1,19 @@
+{
+  "name": "Volt Runner",
+  "devtools": false,
+  "window": {
+    "title": "Volt Runner",
+    "width": 1024,
+    "height": 720,
+    "minWidth": 640,
+    "minHeight": 480,
+    "resizable": true,
+    "decorations": true
+  },
+  "webview": {
+    "url": "volt://localhost/index.html",
+    "devtools": false,
+    "transparent": false,
+    "allowedOrigins": []
+  }
+}

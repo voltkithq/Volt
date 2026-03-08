@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Volt Todo</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1a1a2e;
+      color: #eee;
+      min-height: 100vh;
+      padding: 2rem;
+    }
+    h1 { text-align: center; margin-bottom: 1.5rem; color: #e94560; }
+    .input-row {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1.5rem;
+    }
+    input[type="text"] {
+      flex: 1;
+      padding: 0.75rem 1rem;
+      border: 2px solid #16213e;
+      border-radius: 8px;
+      background: #16213e;
+      color: #eee;
+      font-size: 1rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input[type="text"]:focus { border-color: #e94560; }
+    button {
+      padding: 0.75rem 1.5rem;
+      border: none;
+      border-radius: 8px;
+      background: #e94560;
+      color: white;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    button:hover { background: #c73650; }
+    .todo-list { list-style: none; }
+    .todo-item {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.75rem 1rem;
+      margin-bottom: 0.5rem;
+      background: #16213e;
+      border-radius: 8px;
+      transition: opacity 0.2s;
+    }
+    .todo-item.completed { opacity: 0.5; }
+    .todo-item.completed .todo-text { text-decoration: line-through; }
+    .todo-text { flex: 1; font-size: 1rem; cursor: pointer; }
+    .delete-btn {
+      padding: 0.25rem 0.5rem;
+      background: transparent;
+      color: #e94560;
+      border: 1px solid #e94560;
+      border-radius: 4px;
+      font-size: 0.85rem;
+    }
+    .delete-btn:hover { background: #e94560; color: white; }
+    .stats {
+      text-align: center;
+      margin-top: 1rem;
+      color: #888;
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+  <h1>Volt Todo</h1>
+  <div class="input-row">
+    <input type="text" id="todo-input" placeholder="What needs to be done?" />
+    <button id="add-btn">Add</button>
+  </div>
+  <ul class="todo-list" id="todo-list"></ul>
+  <p class="stats" id="stats"></p>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

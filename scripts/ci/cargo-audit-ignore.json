@@ -1,0 +1,22 @@
+{
+  "note": "Temporary allowlist for upstream GTK3-stack advisories inherited through wry/tao. Remove entries when dependencies migrate.",
+  "ignore": [
+    "RUSTSEC-2024-0411",
+    "RUSTSEC-2024-0412",
+    "RUSTSEC-2024-0413",
+    "RUSTSEC-2024-0414",
+    "RUSTSEC-2024-0415",
+    "RUSTSEC-2024-0416",
+    "RUSTSEC-2024-0417",
+    "RUSTSEC-2024-0418",
+    "RUSTSEC-2024-0419",
+    "RUSTSEC-2024-0420",
+    "RUSTSEC-2024-0370",
+    {
+      "id": "RUSTSEC-2024-0429",
+      "reason": "Transitive via gtk3 stack in wry/tao; glib 0.18 line has no patched release in crates.io yet.",
+      "reviewBy": "2026-06-30",
+    },
+    "RUSTSEC-2025-0057"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "name": "hello-world",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "volt dev",
+    "build": "volt build",
+    "preview": "volt preview",
+    "lint": "eslint . --max-warnings 0"
+  },
+  "dependencies": {
+    "voltkit": "workspace:*",
+    "@voltkit/volt-cli": "workspace:*"
+  },
+  "devDependencies": {
+    "vite": "^7.3.1"
+  }
+}

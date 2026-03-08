@@ -1,0 +1,4 @@
+packages:
+  - "packages/*"
+  - "crates/volt-napi"
+  - "examples/*"

@@ -1,0 +1,19 @@
+[workspace]
+members = [
+    "crates/volt-core",
+    "crates/volt-napi",
+    "crates/volt-runner",
+    "crates/volt-updater-helper",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+license = "BSL-1.1"
+repository = "https://github.com/voltkithq/Volt"
+
+[profile.release]
+lto = true
+strip = "symbols"
+codegen-units = 1
+opt-level = "z"

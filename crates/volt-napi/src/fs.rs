@@ -1,0 +1,90 @@
+use napi::bindgen_prelude::Buffer;
+use napi_derive::napi;
+use std::path::Path;
+use volt_core::fs;
+use volt_core::permissions::Permission;
+
+use crate::permissions::require_permission;
+
+/// File metadata returned by fs_stat.
+#[napi(object)]
+pub struct VoltFileInfo {
+    /// File size in bytes.
+    pub size: i64,
+    /// Whether the path is a file.
+    pub is_file: bool,
+    /// Whether the path is a directory.
+    pub is_dir: bool,
+    /// Whether the file is read-only.
+    pub readonly: bool,
+}
+
+/// Read a file as raw bytes. Path is relative to the base scope directory.
+#[napi]
+pub fn fs_read_file(base_dir: String, path: String) -> napi::Result<Buffer> {
+    require_permission(Permission::FileSystem)?;
+    let data = fs::read_file(Path::new(&base_dir), &path)
+        .map_err(|e| napi::Error::from_reason(format!("fs read failed: {e}")))?;
+    Ok(data.into())
+}
+
+/// Read a file as a UTF-8 string. Path is relative to the base scope directory.
+#[napi]
+pub fn fs_read_file_text(base_dir: String, path: String) -> napi::Result<String> {
+    require_permission(Permission::FileSystem)?;
+    fs::read_file_text(Path::new(&base_dir), &path)
+        .map_err(|e| napi::Error::from_reason(format!("fs read text failed: {e}")))
+}
+
+/// Write data to a file. Path is relative to the base scope directory.
+#[napi]
+pub fn fs_write_file(base_dir: String, path: String, data: Buffer) -> napi::Result<()> {
+    require_permission(Permission::FileSystem)?;
+    fs::write_file(Path::new(&base_dir), &path, &data)
+        .map_err(|e| napi::Error::from_reason(format!("fs write failed: {e}")))
+}
+
+/// List entries in a directory. Path is relative to the base scope directory.
+#[napi]
+pub fn fs_read_dir(base_dir: String, path: String) -> napi::Result<Vec<String>> {
+    require_permission(Permission::FileSystem)?;
+    fs::read_dir(Path::new(&base_dir), &path)
+        .map_err(|e| napi::Error::from_reason(format!("fs read dir failed: {e}")))
+}
+
+/// Get file/directory metadata. Path is relative to the base scope directory.
+#[napi]
+pub fn fs_stat(base_dir: String, path: String) -> napi::Result<VoltFileInfo> {
+    require_permission(Permission::FileSystem)?;
+    let info = fs::stat(Path::new(&base_dir), &path)
+        .map_err(|e| napi::Error::from_reason(format!("fs stat failed: {e}")))?;
+    let size = i64::try_from(info.size).map_err(|_| {
+        napi::Error::from_reason(format!(
+            "fs stat failed: file size {} exceeds i64::MAX",
+            info.size
+        ))
+    })?;
+
+    Ok(VoltFileInfo {
+        size,
+        is_file: info.is_file,
+        is_dir: info.is_dir,
+        readonly: info.readonly,
+    })
+}
+
+/// Create a directory (and parents). Path is relative to the base scope directory.
+#[napi]
+pub fn fs_mkdir(base_dir: String, path: String) -> napi::Result<()> {
+    require_permission(Permission::FileSystem)?;
+    fs::mkdir(Path::new(&base_dir), &path)
+        .map_err(|e| napi::Error::from_reason(format!("fs mkdir failed: {e}")))
+}
+
+/// Remove a file or directory. Path is relative to the base scope directory.
+#[napi]
+pub fn fs_remove(base_dir: String, path: String) -> napi::Result<()> {
+    require_permission(Permission::FileSystem)?;
+    fs::remove(Path::new(&base_dir), &path)
+        .map_err(|e| napi::Error::from_reason(format!("fs remove failed: {e}")))
+}

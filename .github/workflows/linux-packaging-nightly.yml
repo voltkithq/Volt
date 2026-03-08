@@ -1,0 +1,114 @@
+name: Linux Packaging Integration (Nightly)
+
+on:
+  schedule:
+    - cron: '30 4 * * *'
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Rust target triple used for package naming validation
+        required: false
+        default: x86_64-unknown-linux-gnu
+      expected_appimage_arch:
+        description: Expected AppImage architecture suffix in artifact filename
+        required: false
+        default: x86_64
+      expected_deb_arch:
+        description: Expected Debian architecture suffix in artifact filename
+        required: false
+        default: amd64
+      binary_name:
+        description: Expected packaged binary base name
+        required: false
+        default: hello-world
+      package_version:
+        description: Expected packaged version string
+        required: false
+        default: '0.1.0'
+      appimagetool_url:
+        description: appimagetool download URL
+        required: false
+        default: https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage
+      appimagetool_sha256:
+        description: Expected sha256 for the appimagetool binary
+        required: false
+        default: ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-packaging-nightly-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  linux-packaging:
+    name: Linux Packaging Integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build volt-cli
+        run: pnpm --filter @voltkit/volt-cli run build
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ github.event.inputs.target || 'x86_64-unknown-linux-gnu' }}
+
+      - name: Install Linux build and packaging tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y dpkg curl coreutils libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+          APPIMAGETOOL_URL="${{ github.event.inputs.appimagetool_url || 'https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage' }}"
+          APPIMAGETOOL_SHA256="${{ github.event.inputs.appimagetool_sha256 || 'ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0' }}"
+          sudo curl -fsSL "$APPIMAGETOOL_URL" -o /tmp/appimagetool
+          echo "$APPIMAGETOOL_SHA256  /tmp/appimagetool" | sha256sum --check --
+          sudo install -m 0755 /tmp/appimagetool /usr/local/bin/appimagetool
+          rm -f /tmp/appimagetool
+
+      - name: Run end-to-end Linux packaging integration
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+          VOLT_PACKAGE_TARGET: ${{ github.event.inputs.target || 'x86_64-unknown-linux-gnu' }}
+          VOLT_EXPECTED_APPIMAGE_ARCH: ${{ github.event.inputs.expected_appimage_arch || 'x86_64' }}
+          VOLT_EXPECTED_DEB_ARCH: ${{ github.event.inputs.expected_deb_arch || 'amd64' }}
+          VOLT_PACKAGE_BINARY_NAME: ${{ github.event.inputs.binary_name || 'hello-world' }}
+          VOLT_PACKAGE_VERSION: ${{ github.event.inputs.package_version || '0.1.0' }}
+        run: >
+          node scripts/ci/kpi-export.mjs
+          --output artifacts/metrics/linux-packaging-duration.json
+          --metric linux_packaging_duration_ms
+          --scope linux-packaging-nightly
+          --
+          node scripts/ci/linux-packaging-integration.mjs
+
+      - name: Upload packaged artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: linux-packaging-artifacts
+          path: examples/hello-world/dist-package
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload packaging KPI metrics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: linux-packaging-kpi
+          path: artifacts/metrics/linux-packaging-duration.json
+          if-no-files-found: warn
+          retention-days: 14

@@ -1,0 +1,130 @@
+use std::env;
+use std::fs;
+use std::path::{Path, PathBuf};
+
+const ENV_ASSET_BUNDLE: &str = "VOLT_ASSET_BUNDLE";
+const ENV_BACKEND_BUNDLE: &str = "VOLT_BACKEND_BUNDLE";
+const ENV_RUNNER_CONFIG: &str = "VOLT_RUNNER_CONFIG";
+const ENV_UPDATE_PUBLIC_KEY: &str = "VOLT_UPDATE_PUBLIC_KEY";
+const DEFAULT_ASSET_BUNDLE: &str = "assets/default-assets.bin";
+const DEFAULT_BACKEND_BUNDLE: &str = "assets/default-backend.js";
+const DEFAULT_RUNNER_CONFIG: &str = "assets/default-config.json";
+const OUT_ASSET_BUNDLE: &str = "embedded-assets.bin";
+const OUT_BACKEND_BUNDLE: &str = "embedded-backend.js";
+const OUT_RUNNER_CONFIG: &str = "embedded-config.json";
+const OUT_UPDATE_PUBLIC_KEY: &str = "embedded-update-public-key.txt";
+
+fn main() {
+    println!("cargo:rerun-if-env-changed={ENV_ASSET_BUNDLE}");
+    println!("cargo:rerun-if-env-changed={ENV_BACKEND_BUNDLE}");
+    println!("cargo:rerun-if-env-changed={ENV_RUNNER_CONFIG}");
+    println!("cargo:rerun-if-env-changed={ENV_UPDATE_PUBLIC_KEY}");
+
+    let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR is not set by cargo"));
+    let manifest_dir = PathBuf::from(
+        env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR is not set by cargo"),
+    );
+
+    embed_artifact(
+        ENV_ASSET_BUNDLE,
+        &manifest_dir.join(DEFAULT_ASSET_BUNDLE),
+        &out_dir.join(OUT_ASSET_BUNDLE),
+    )
+    .unwrap_or_else(|error| panic!("failed to embed frontend asset bundle: {error}"));
+
+    embed_artifact(
+        ENV_BACKEND_BUNDLE,
+        &manifest_dir.join(DEFAULT_BACKEND_BUNDLE),
+        &out_dir.join(OUT_BACKEND_BUNDLE),
+    )
+    .unwrap_or_else(|error| panic!("failed to embed backend bundle: {error}"));
+
+    embed_artifact(
+        ENV_RUNNER_CONFIG,
+        &manifest_dir.join(DEFAULT_RUNNER_CONFIG),
+        &out_dir.join(OUT_RUNNER_CONFIG),
+    )
+    .unwrap_or_else(|error| panic!("failed to embed runner config: {error}"));
+
+    write_embedded_update_public_key(&out_dir.join(OUT_UPDATE_PUBLIC_KEY))
+        .unwrap_or_else(|error| panic!("failed to embed update public key: {error}"));
+}
+
+fn embed_artifact(env_key: &str, default_path: &Path, out_path: &Path) -> Result<(), String> {
+    let source_path = match env::var(env_key) {
+        Ok(raw) => resolve_env_source_path(&raw)?,
+        Err(env::VarError::NotPresent) => default_path.to_path_buf(),
+        Err(env::VarError::NotUnicode(_)) => {
+            return Err(format!("{env_key} contains non-Unicode data"));
+        }
+    };
+
+    if !source_path.exists() {
+        return Err(format!(
+            "source file does not exist: {}",
+            source_path.display()
+        ));
+    }
+
+    println!("cargo:rerun-if-changed={}", source_path.display());
+    fs::copy(&source_path, out_path).map_err(|error| {
+        format!(
+            "failed to copy '{}' to '{}': {error}",
+            source_path.display(),
+            out_path.display()
+        )
+    })?;
+    Ok(())
+}
+
+fn resolve_env_source_path(raw: &str) -> Result<PathBuf, String> {
+    let trimmed = strip_surrounding_quotes(raw.trim());
+    if trimmed.is_empty() {
+        return Err("path override is empty".to_string());
+    }
+
+    let candidate = PathBuf::from(trimmed);
+    if candidate.is_absolute() {
+        return Ok(candidate);
+    }
+
+    let cwd = env::current_dir().map_err(|error| format!("failed to read cwd: {error}"))?;
+    let cwd_candidate = cwd.join(&candidate);
+    if cwd_candidate.exists() {
+        return Ok(cwd_candidate);
+    }
+
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR")
+        .map(PathBuf::from)
+        .map_err(|error| format!("failed to read CARGO_MANIFEST_DIR: {error}"))?;
+    Ok(manifest_dir.join(candidate))
+}
+
+fn strip_surrounding_quotes(input: &str) -> &str {
+    if input.len() >= 2 {
+        let bytes = input.as_bytes();
+        let first = bytes[0];
+        let last = bytes[input.len() - 1];
+        if (first == b'"' && last == b'"') || (first == b'\'' && last == b'\'') {
+            return &input[1..input.len() - 1];
+        }
+    }
+    input
+}
+
+fn write_embedded_update_public_key(out_path: &Path) -> Result<(), String> {
+    let key = match env::var(ENV_UPDATE_PUBLIC_KEY) {
+        Ok(value) => strip_surrounding_quotes(value.trim()).trim().to_string(),
+        Err(env::VarError::NotPresent) => String::new(),
+        Err(env::VarError::NotUnicode(_)) => {
+            return Err(format!("{ENV_UPDATE_PUBLIC_KEY} contains non-Unicode data"));
+        }
+    };
+
+    fs::write(out_path, key).map_err(|error| {
+        format!(
+            "failed to write embedded update public key to '{}': {error}",
+            out_path.display()
+        )
+    })
+}

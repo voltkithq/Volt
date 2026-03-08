@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Volt IPC Demo</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 20px;
+      font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      color: #0f172a;
+      background: radial-gradient(circle at top right, #d6f3ff 0%, #eef7ff 32%, #f8fbff 58%, #ffffff 100%);
+      min-height: 100vh;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 30px;
+      letter-spacing: 0.02em;
+    }
+    .subtitle {
+      margin: 0 0 20px;
+      color: #334155;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(320px, 1fr));
+      gap: 16px;
+      max-width: 1280px;
+    }
+    .panel {
+      background: rgba(255, 255, 255, 0.92);
+      border: 1px solid #dbe7f3;
+      border-radius: 14px;
+      padding: 14px;
+      box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+    }
+    .panel h2 {
+      margin: 0 0 10px;
+      font-size: 18px;
+    }
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+    label {
+      font-size: 13px;
+      color: #334155;
+      margin-right: 4px;
+    }
+    input {
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 14px;
+      min-width: 88px;
+    }
+    input[type="text"] {
+      min-width: 240px;
+      flex: 1;
+    }
+    input[type="password"] {
+      min-width: 220px;
+      flex: 1;
+    }
+    button {
+      border: none;
+      border-radius: 10px;
+      background: linear-gradient(130deg, #0ea5e9, #0284c7);
+      color: white;
+      padding: 9px 14px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:hover {
+      filter: brightness(1.05);
+    }
+    pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: #0f172a;
+      color: #dbeafe;
+      border-radius: 10px;
+      padding: 10px;
+      min-height: 92px;
+      font-size: 13px;
+    }
+    .status-grid {
+      display: grid;
+      grid-template-columns: 170px 1fr;
+      row-gap: 6px;
+      column-gap: 8px;
+      margin-bottom: 10px;
+      font-size: 14px;
+    }
+    .status-key {
+      color: #334155;
+      font-weight: 600;
+    }
+    .status-value {
+      color: #0f172a;
+      font-family: "Consolas", "Menlo", monospace;
+      overflow-wrap: anywhere;
+    }
+    @media (max-width: 980px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+      input[type="text"] {
+        min-width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>IPC Demo</h1>
+  <p class="subtitle">Frontend -> Rust bridge -> Boa pool -> native modules -> frontend events.</p>
+
+  <div class="layout">
+    <section class="panel">
+      <h2>Core IPC</h2>
+      <div class="controls">
+        <button id="btn-ping" type="button">Ping</button>
+        <button id="btn-status" type="button">Refresh status</button>
+      </div>
+      <pre id="result-ping">Ping response appears here.</pre>
+    </section>
+
+    <section class="panel">
+      <h2>Echo + Compute</h2>
+      <div class="controls">
+        <label for="echo-input">Message</label>
+        <input id="echo-input" type="text" value="Hello from renderer">
+        <button id="btn-echo" type="button">Echo</button>
+      </div>
+      <pre id="result-echo">Echo response appears here.</pre>
+      <div class="controls" style="margin-top: 10px;">
+        <label for="compute-a">a</label>
+        <input id="compute-a" type="number" value="21">
+        <label for="compute-b">b</label>
+        <input id="compute-b" type="number" value="2">
+        <button id="btn-compute" type="button">Compute</button>
+      </div>
+      <pre id="result-compute">Compute response appears here.</pre>
+    </section>
+
+    <section class="panel">
+      <h2>Window + Native Setup</h2>
+      <div class="controls">
+        <button id="btn-native-setup" type="button">Setup menu/shortcut/tray</button>
+      </div>
+      <pre id="result-native">Native setup result appears here.</pre>
+      <div class="controls" style="margin-top: 10px;">
+        <button id="btn-window-minimize" type="button">Minimize</button>
+        <button id="btn-window-maximize" type="button">Maximize</button>
+        <button id="btn-window-restore" type="button">Restore</button>
+      </div>
+      <pre id="result-window">Window command result appears here.</pre>
+    </section>
+
+    <section class="panel">
+      <h2>Events + Progress</h2>
+      <div class="controls">
+        <button id="btn-progress" type="button">Run progress task</button>
+      </div>
+      <pre id="result-progress">Progress updates will appear here.</pre>
+      <pre id="result-events" style="margin-top: 10px;">Event log appears here.</pre>
+    </section>
+
+    <section class="panel">
+      <h2>SQLite (`volt:db`)</h2>
+      <div class="controls">
+        <label for="db-input">Message</label>
+        <input id="db-input" type="text" value="Record from IPC demo">
+        <button id="btn-db-add" type="button">Add</button>
+        <button id="btn-db-list" type="button">List</button>
+        <button id="btn-db-clear" type="button">Clear</button>
+      </div>
+      <pre id="result-db">Database records appear here.</pre>
+    </section>
+
+    <section class="panel">
+      <h2>Secure Storage (`volt:secureStorage`)</h2>
+      <div class="controls">
+        <label for="secret-key">Key</label>
+        <input id="secret-key" type="text" value="ipc-demo/demo-secret">
+      </div>
+      <div class="controls">
+        <label for="secret-value">Secret</label>
+        <input id="secret-value" type="password" value="demo-token">
+        <button id="btn-secret-set" type="button">Set</button>
+        <button id="btn-secret-get" type="button">Get</button>
+        <button id="btn-secret-has" type="button">Has</button>
+        <button id="btn-secret-delete" type="button">Delete</button>
+      </div>
+      <pre id="result-secret">Secure storage result appears here.</pre>
+    </section>
+
+    <section class="panel">
+      <h2>Status Panel</h2>
+      <div class="status-grid">
+        <div class="status-key">Ping latency</div>
+        <div class="status-value" id="status-latency">not measured</div>
+        <div class="status-key">OS (backend)</div>
+        <div class="status-value" id="status-os">loading...</div>
+        <div class="status-key">Generated UUID</div>
+        <div class="status-value" id="status-uuid">loading...</div>
+        <div class="status-key">Clipboard state</div>
+        <div class="status-value" id="status-clipboard">loading...</div>
+        <div class="status-key">Window count</div>
+        <div class="status-value" id="status-windows">loading...</div>
+        <div class="status-key">DB row count</div>
+        <div class="status-value" id="status-db-rows">loading...</div>
+        <div class="status-key">Shortcut</div>
+        <div class="status-value" id="status-shortcut">loading...</div>
+        <div class="status-key">Secure storage</div>
+        <div class="status-value" id="status-secure-storage">loading...</div>
+        <div class="status-key">Native setup</div>
+        <div class="status-value" id="status-native">loading...</div>
+      </div>
+      <pre id="result-status">Status payload appears here.</pre>
+    </section>
+  </div>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

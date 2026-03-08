@@ -1,0 +1,36 @@
+{
+  "quit": {
+    "type": "quit"
+  },
+  "windowClosed": {
+    "type": "window-closed",
+    "windowId": "WindowId(3)",
+    "jsWindowId": "window-3"
+  },
+  "windowClosedWithoutJsId": {
+    "type": "window-closed",
+    "windowId": "WindowId(7)",
+    "jsWindowId": null
+  },
+  "ipcMessageJsonRaw": {
+    "type": "ipc-message",
+    "windowId": "window-1",
+    "raw": {
+      "id": "1",
+      "method": "ping"
+    }
+  },
+  "ipcMessageStringRaw": {
+    "type": "ipc-message",
+    "windowId": "window-2",
+    "raw": "hello"
+  },
+  "menuEvent": {
+    "type": "menu-event",
+    "menuId": "file-open"
+  },
+  "shortcutTriggered": {
+    "type": "shortcut-triggered",
+    "id": 42
+  }
+}

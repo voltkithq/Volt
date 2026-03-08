@@ -1,0 +1,511 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-lint-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-lint-
+
+      - name: Install system dependencies (Linux)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Rust format check
+        run: cargo fmt -- --check
+
+      - name: Rust clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Rust dependency audit
+        run: node scripts/ci/cargo-audit.mjs
+
+      - name: TypeScript lint
+        run: pnpm lint
+
+      - name: TypeScript typecheck
+        run: |
+          pnpm --filter voltkit run typecheck
+          pnpm --filter @voltkit/volt-test run typecheck
+          pnpm --filter @voltkit/volt-cli run typecheck
+          pnpm --filter @voltkit/create-volt run typecheck
+
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-test-
+
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Run Rust tests
+        run: cargo test --workspace
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build TypeScript packages
+        run: |
+          pnpm --filter voltkit run build
+          pnpm --filter @voltkit/volt-test run build
+          pnpm --filter @voltkit/volt-cli run build
+
+      - name: Run TypeScript tests (voltkit)
+        run: pnpm --filter voltkit run test
+
+      - name: Run TypeScript tests (volt-cli)
+        run: pnpm --filter @voltkit/volt-cli run test
+
+      - name: Run TypeScript tests (volt-test)
+        run: pnpm --filter @voltkit/volt-test run test
+
+      - name: Linux packaging filename integration checks
+        if: runner.os == 'Linux'
+        run: pnpm --filter @voltkit/volt-cli run test -- src/__tests__/package-linux-filename-ci.test.ts
+
+  test-coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-tarpaulin
+        run: cargo install cargo-tarpaulin
+
+      - name: Cache Cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-coverage-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-coverage-
+
+      - name: Install system dependencies (Linux)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Rust coverage
+        run: cargo tarpaulin --workspace --out xml --output-dir coverage
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build TypeScript packages
+        run: |
+          pnpm --filter voltkit run build
+          pnpm --filter @voltkit/volt-test run build
+          pnpm --filter @voltkit/volt-cli run build
+
+      - name: TypeScript coverage (voltkit)
+        run: pnpm --filter voltkit run test:coverage
+
+      - name: TypeScript coverage (volt-cli)
+        run: pnpm --filter @voltkit/volt-cli run test:coverage
+
+      - name: TypeScript coverage (volt-test)
+        run: pnpm --filter @voltkit/volt-test run test:coverage
+
+      - name: Upload Rust coverage
+        uses: codecov/codecov-action@v5
+        with:
+          files: coverage/cobertura.xml
+          flags: rust
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload TypeScript coverage (voltkit)
+        uses: codecov/codecov-action@v5
+        with:
+          files: packages/volt/coverage/coverage-final.json
+          flags: typescript-framework
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload TypeScript coverage (volt-cli)
+        uses: codecov/codecov-action@v5
+        with:
+          files: packages/volt-cli/coverage/coverage-final.json
+          flags: typescript-cli
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload TypeScript coverage (volt-test)
+        uses: codecov/codecov-action@v5
+        with:
+          files: packages/volt-test/coverage/coverage-final.json
+          flags: typescript-test
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  build-native:
+    name: Build Native (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache Cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-build-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-build-${{ matrix.target }}-
+
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Build volt-napi (release)
+        run: >
+          node scripts/ci/kpi-export.mjs
+          --output artifacts/metrics/native-build-${{ matrix.target }}.json
+          --metric native_build_duration_ms
+          --scope build-native:${{ matrix.target }}
+          --
+          cargo build -p volt-napi --release --target ${{ matrix.target }}
+
+      - name: Upload native build KPI metrics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-build-kpi-${{ matrix.target }}
+          path: artifacts/metrics/native-build-${{ matrix.target }}.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  platform-behavior:
+    name: Platform Behavior (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-platform-behavior-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-platform-behavior-
+
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Rust platform-behavior checks (menu/shortcut/ipc)
+        run: |
+          cargo test -p volt-core app::tests::test_parse_hotkey_accelerator
+          cargo test -p volt-core menu::tests::test_build_menu_with_submenu
+          cargo test -p volt-core ipc::tests::test_register_and_handle
+          cargo test -p volt-core --test ipc_integration full_ipc_roundtrip_success
+          cargo test -p volt-napi app::tests::test_runtime_mode_for_current_target_matches_cfg
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build TypeScript packages
+        run: |
+          pnpm --filter voltkit run build
+          pnpm --filter @voltkit/volt-test run build
+          pnpm --filter @voltkit/volt-cli run build
+
+      - name: TypeScript platform-behavior checks (menu/shortcut/ipc)
+        run: |
+          pnpm --filter voltkit run test -- src/__tests__/ipc.test.ts src/__tests__/menu.test.ts src/__tests__/globalShortcut.test.ts
+          pnpm --filter @voltkit/volt-cli run test -- src/__tests__/dev-ipc.test.ts src/__tests__/runtime-mode.test.ts
+
+  updater-smoke:
+    name: Updater Smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-updater-smoke-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-updater-smoke-
+
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Run updater smoke checks (core + runner updater module)
+        run: |
+          cargo test -p volt-core updater::tests::test_check_for_update_204_returns_none
+          cargo test -p volt-core updater::tests::test_signature_verification
+          cargo test -p volt-core updater::tests::test_tampered_data_fails_verification
+          cargo test -p volt-core updater::tests::test_validate_url_https
+          cargo test -p volt-runner modules::volt_updater
+
+      - name: Run updater helper smoke checks (Windows)
+        if: runner.os == 'Windows'
+        run: cargo test -p volt-updater-helper
+
+  contract-parity:
+    name: Contract Parity (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-contract-parity-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-contract-parity-
+
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Rust contract payload check
+        run: cargo test -p volt-napi app::tests::test_payloads_match_contract_fixture
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: TypeScript contract payload check
+        run: pnpm --filter @voltkit/volt-cli run test -- src/__tests__/event-contracts.test.ts
+
+  contract-compatibility:
+    name: Contract Compatibility Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Enforce compatibility annotation policy
+        env:
+          GITHUB_BASE_REF: ${{ github.base_ref }}
+          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
+        run: node scripts/contracts/check-compatibility.mjs
+
+  e2e-smoke:
+    name: E2E Smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-e2e-smoke-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-e2e-smoke-
+
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev xvfb
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build create-volt, volt-test, and volt-cli
+        run: |
+          pnpm --filter @voltkit/create-volt run build
+          pnpm --filter @voltkit/volt-test run build
+          pnpm --filter @voltkit/volt-cli run build
+
+      - name: Run end-to-end smoke flow
+        env:
+          VOLT_E2E_RETRIES: "1"
+        run: node scripts/ci/e2e-smoke.mjs
+
+      - name: Upload E2E artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-smoke-artifacts-${{ matrix.os }}
+          path: artifacts/e2e-smoke
+          if-no-files-found: warn
+          retention-days: 14

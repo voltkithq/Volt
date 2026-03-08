@@ -1,0 +1,33 @@
+{
+  "name": "@voltkit/volt-native",
+  "version": "0.1.0",
+  "license": "BSL-1.1",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "loader/*.js",
+    "*.node"
+  ],
+  "napi": {
+    "binaryName": "volt-native",
+    "targets": [
+      "x86_64-unknown-linux-gnu",
+      "x86_64-apple-darwin",
+      "aarch64-apple-darwin",
+      "x86_64-pc-windows-msvc"
+    ]
+  },
+  "engines": {
+    "node": ">= 20"
+  },
+  "scripts": {
+    "lint": "eslint index.js --max-warnings 0",
+    "build": "napi build --platform --release --features devtools",
+    "build:debug": "napi build --platform --features devtools"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^3.4.0"
+  }
+}

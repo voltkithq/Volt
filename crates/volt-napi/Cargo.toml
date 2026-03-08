@@ -1,0 +1,26 @@
+[package]
+name = "volt-napi"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[features]
+default = []
+devtools = ["volt-core/devtools"]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+volt-core = { path = "../volt-core" }
+napi = { version = "3", features = ["async", "serde-json"] }
+napi-derive = "3"
+serde_json = "1"
+image = { version = "0.25", default-features = false, features = ["png"] }
+tray-icon = "0.21"
+tracing = "0.1"
+tracing-log = "0.2"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
+[build-dependencies]
+napi-build = "2"
