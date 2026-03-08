@@ -490,8 +490,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build create-volt, volt-test, and volt-cli
+      - name: Build TypeScript packages
         run: |
+          pnpm --filter voltkit run build
           pnpm --filter @voltkit/create-volt run build
           pnpm --filter @voltkit/volt-test run build
           pnpm --filter @voltkit/volt-cli run build
