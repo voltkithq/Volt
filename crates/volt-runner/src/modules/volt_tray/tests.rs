@@ -53,7 +53,7 @@ fn icon_path_requires_filesystem_permission() {
 #[test]
 fn tray_commands_dispatch_over_bridge() {
     let _guard = test_guard();
-    let (receiver, lifecycle, proxy, handle) = init_test_bridge();
+    let (receiver, lifecycle, _proxy) = init_test_bridge();
     crate::modules::configure(crate::modules::ModuleConfig {
         fs_base_dir: std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
         permissions: vec!["tray".to_string()],
@@ -116,6 +116,6 @@ fn tray_commands_dispatch_over_bridge() {
     set_tray_visible(false).expect("set tray visible");
     destroy_tray().expect("destroy tray");
 
-    shutdown_test_bridge(lifecycle, proxy, handle);
+    shutdown_test_bridge(lifecycle);
     let _ = responder.join();
 }

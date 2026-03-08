@@ -185,7 +185,7 @@ mod tests {
     #[test]
     fn set_app_menu_dispatches_command() {
         let _guard = test_guard();
-        let (receiver, lifecycle, proxy, handle) = init_test_bridge();
+        let (receiver, lifecycle, _proxy) = init_test_bridge();
         crate::modules::configure(crate::modules::ModuleConfig {
             fs_base_dir: std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
             permissions: vec!["menu".to_string()],
@@ -219,6 +219,6 @@ mod tests {
         .expect("set app menu");
 
         let _ = responder.join();
-        shutdown_test_bridge(lifecycle, proxy, handle);
+        shutdown_test_bridge(lifecycle);
     }
 }

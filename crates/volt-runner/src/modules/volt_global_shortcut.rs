@@ -113,7 +113,7 @@ mod tests {
     #[test]
     fn register_and_unregister_dispatch_expected_commands() {
         let _guard = test_guard();
-        let (receiver, lifecycle, proxy, handle) = init_test_bridge();
+        let (receiver, lifecycle, _proxy) = init_test_bridge();
         crate::modules::configure(crate::modules::ModuleConfig {
             fs_base_dir: std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
             permissions: vec!["globalShortcut".to_string()],
@@ -161,7 +161,7 @@ mod tests {
         unregister_shortcut("CmdOrCtrl+Shift+P".to_string()).expect("unregister shortcut");
         unregister_all_shortcuts().expect("unregister all shortcuts");
 
-        shutdown_test_bridge(lifecycle, proxy, handle);
+        shutdown_test_bridge(lifecycle);
         let _ = responder.join();
     }
 

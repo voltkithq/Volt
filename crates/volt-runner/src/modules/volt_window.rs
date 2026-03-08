@@ -98,82 +98,8 @@ pub fn build_module(context: &mut Context) -> Module {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::mpsc;
-    use std::sync::{Mutex, OnceLock};
-    use std::thread::{self, JoinHandle};
+    use crate::modules::test_utils::{init_test_bridge, shutdown_test_bridge, test_guard};
     use std::time::Duration;
-
-    use tao::event::Event;
-    use tao::event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy};
-    use volt_core::app::AppEvent;
-    use volt_core::command::CommandEnvelope;
-
-    fn test_guard() -> std::sync::MutexGuard<'static, ()> {
-        static TEST_GUARD: OnceLock<Mutex<()>> = OnceLock::new();
-        TEST_GUARD
-            .get_or_init(|| Mutex::new(()))
-            .lock()
-            .unwrap_or_else(|error| error.into_inner())
-    }
-
-    fn spawn_live_event_loop() -> (EventLoopProxy<AppEvent>, JoinHandle<()>) {
-        let (proxy_tx, proxy_rx) = mpsc::channel();
-        let handle = thread::spawn(move || {
-            let mut builder = EventLoopBuilder::<AppEvent>::with_user_event();
-            #[cfg(target_os = "windows")]
-            {
-                use tao::platform::windows::EventLoopBuilderExtWindows;
-                builder.with_any_thread(true);
-            }
-            #[cfg(any(
-                target_os = "linux",
-                target_os = "dragonfly",
-                target_os = "freebsd",
-                target_os = "netbsd",
-                target_os = "openbsd"
-            ))]
-            {
-                use tao::platform::unix::EventLoopBuilderExtUnix;
-                builder.with_any_thread(true);
-            }
-            let event_loop = builder.build();
-            let proxy = event_loop.create_proxy();
-            let _ = proxy_tx.send(proxy);
-            event_loop.run(move |event, _, control_flow| {
-                *control_flow = ControlFlow::Wait;
-                if let Event::UserEvent(AppEvent::Quit) = event {
-                    *control_flow = ControlFlow::Exit;
-                }
-            });
-        });
-
-        let proxy = proxy_rx
-            .recv_timeout(Duration::from_secs(1))
-            .expect("event loop proxy");
-        (proxy, handle)
-    }
-
-    fn init_test_bridge() -> (
-        mpsc::Receiver<CommandEnvelope>,
-        command::BridgeLifecycle,
-        EventLoopProxy<AppEvent>,
-        JoinHandle<()>,
-    ) {
-        command::shutdown_bridge();
-        let (proxy, handle) = spawn_live_event_loop();
-        let registration = command::init_bridge(proxy.clone()).expect("bridge init");
-        (registration.receiver, registration.lifecycle, proxy, handle)
-    }
-
-    fn shutdown_test_bridge(
-        lifecycle: command::BridgeLifecycle,
-        proxy: EventLoopProxy<AppEvent>,
-        handle: JoinHandle<()>,
-    ) {
-        lifecycle.shutdown();
-        let _ = proxy.send_event(AppEvent::Quit);
-        let _ = handle.join();
-    }
 
     #[test]
     fn resolve_window_id_defaults_to_first_window() {
@@ -191,7 +117,7 @@ mod tests {
     #[test]
     fn close_uses_default_window_when_not_provided() {
         let _guard = test_guard();
-        let (receiver, lifecycle, proxy, handle) = init_test_bridge();
+        let (receiver, lifecycle, _proxy) = init_test_bridge();
 
         send_window_command(None, |js_id| AppCommand::CloseWindow { js_id })
             .expect("close command");
@@ -204,13 +130,13 @@ mod tests {
             command => panic!("unexpected command: {command:?}"),
         }
 
-        shutdown_test_bridge(lifecycle, proxy, handle);
+        shutdown_test_bridge(lifecycle);
     }
 
     #[test]
     fn focus_forwards_explicit_window_id() {
         let _guard = test_guard();
-        let (receiver, lifecycle, proxy, handle) = init_test_bridge();
+        let (receiver, lifecycle, _proxy) = init_test_bridge();
 
         send_window_command(Some("window-99".to_string()), |js_id| {
             AppCommand::FocusWindow { js_id }
@@ -225,13 +151,13 @@ mod tests {
             command => panic!("unexpected command: {command:?}"),
         }
 
-        shutdown_test_bridge(lifecycle, proxy, handle);
+        shutdown_test_bridge(lifecycle);
     }
 
     #[test]
     fn query_window_count_uses_reply_channel() {
         let _guard = test_guard();
-        let (receiver, lifecycle, proxy, handle) = init_test_bridge();
+        let (receiver, lifecycle, _proxy) = init_test_bridge();
 
         let responder = std::thread::spawn(move || {
             let envelope = receiver
@@ -249,13 +175,13 @@ mod tests {
         assert_eq!(window_count, 3);
         let _ = responder.join();
 
-        shutdown_test_bridge(lifecycle, proxy, handle);
+        shutdown_test_bridge(lifecycle);
     }
 
     #[test]
     fn quit_dispatches_quit_command() {
         let _guard = test_guard();
-        let (receiver, lifecycle, proxy, handle) = init_test_bridge();
+        let (receiver, lifecycle, _proxy) = init_test_bridge();
 
         quit().expect("quit command");
         let envelope = receiver
@@ -267,6 +193,6 @@ mod tests {
             command => panic!("unexpected command: {command:?}"),
         }
 
-        shutdown_test_bridge(lifecycle, proxy, handle);
+        shutdown_test_bridge(lifecycle);
     }
 }

@@ -165,7 +165,7 @@ function parsePropertyAt(source: string, startIndex: number): PropertyValueRange
   if (index >= source.length) {
     return null;
   }
-  let key: string | null = null;
+  let key: string;
   if (source[index] === '\'' || source[index] === '"') {
     const endQuote = skipQuotedString(source, index);
     if (endQuote <= index + 1 || endQuote > source.length) {
