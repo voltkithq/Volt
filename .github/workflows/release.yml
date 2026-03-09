@@ -159,6 +159,7 @@ jobs:
 
       - name: Build TypeScript packages
         run: |
+          pnpm --filter @voltkit/volt-test run build
           pnpm --filter voltkit run build
           pnpm --filter @voltkit/volt-cli run build
           pnpm --filter @voltkit/create-volt run build
