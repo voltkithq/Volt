@@ -40,31 +40,20 @@ Run `cargo clean` periodically to reclaim disk space from incremental compilatio
 - `packages/create-volt`: project scaffolder
 - `examples/`: sample apps (`hello-world`, `todo-app`, `ipc-demo`)
 
-## Quick Start (Published Packages)
+## Quick Start
 
 ```bash
-pnpm create @voltkit/create-volt my-app
+npm create @voltkit/volt my-app
 cd my-app
-pnpm install
-pnpm dev
-```
-
-Pre-release fallback (run from this monorepo before npm packages exist):
-
-```bash
-pnpm install
-pnpm --filter @voltkit/create-volt run build
-node packages/create-volt/dist/index.js my-app
-cd my-app
-pnpm install
-pnpm dev
+npm install
+npm run dev
 ```
 
 Build for production:
 
 ```bash
-pnpm build
-pnpm package
+npm run build
+npm run package
 ```
 
 ## Local Development (This Monorepo)

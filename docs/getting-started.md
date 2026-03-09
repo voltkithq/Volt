@@ -5,22 +5,12 @@ Need a faster setup path? See [5-Minute Onboarding](onboarding-5-minutes.md).
 ## Prerequisites
 
 - [Node.js](https://nodejs.org/) >= 20
-- [pnpm](https://pnpm.io/) >= 9
 - [Rust](https://rustup.rs/) (stable toolchain) - for native builds
 
 ## Create a Project
 
 ```bash
-pnpm create @voltkit/create-volt my-app
-cd my-app
-```
-
-If you are running from the monorepo before the first npm release, scaffold locally:
-
-```bash
-pnpm install
-pnpm --filter @voltkit/create-volt run build
-node packages/create-volt/dist/index.js my-app
+npm create @voltkit/volt my-app
 cd my-app
 ```
 
@@ -52,10 +42,10 @@ my-app/
 cd my-app
 
 # Install dependencies
-pnpm install
+npm install
 
 # Start development (Vite dev server + native window)
-pnpm dev
+npm run dev
 ```
 
 This opens a native desktop window with your app loaded from the Vite dev server. Hot module replacement works automatically.
@@ -87,7 +77,7 @@ See [Configuration Reference](configuration.md) for all options.
 
 ```bash
 # Build the frontend + native binary
-pnpm build
+npm run build
 ```
 
 The output is in `dist-volt/`. The runtime artifact includes all frontend assets embedded.
@@ -99,12 +89,12 @@ The output is in `dist-volt/`. The runtime artifact includes all frontend assets
 volt doctor
 
 # Create platform-specific installer
-pnpm package
+npm run package
 ```
 
 This produces:
 - **Windows:** NSIS installer (`.exe`)
-- **Windows (optional):** MSIX package (`pnpm package -- --format msix`)
+- **Windows (optional):** MSIX package (`npm run package -- --format msix`)
 - **macOS:** `.app` bundle (optionally `.dmg`)
 - **Linux:** AppImage and `.deb`
 

@@ -5,24 +5,15 @@ This path gets a new Volt app running and packaged as fast as possible.
 ## Minute 0-1: Scaffold
 
 ```bash
-pnpm create @voltkit/create-volt my-app
-cd my-app
-```
-
-If you are working from this repository before package publishing, use:
-
-```bash
-pnpm install
-pnpm --filter @voltkit/create-volt run build
-node packages/create-volt/dist/index.js my-app
+npm create @voltkit/volt my-app
 cd my-app
 ```
 
 ## Minute 1-2: Install + Run
 
 ```bash
-pnpm install
-pnpm dev
+npm install
+npm run dev
 ```
 
 You should see:
@@ -61,8 +52,8 @@ Fix any `FAIL` checks before packaging.
 ## Minute 4-5: Build + Package
 
 ```bash
-pnpm build
-pnpm package
+npm run build
+npm run package
 ```
 
 Common outputs:
