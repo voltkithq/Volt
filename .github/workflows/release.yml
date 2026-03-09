@@ -164,6 +164,24 @@ jobs:
           pnpm --filter @voltkit/volt-cli run build
           pnpm --filter @voltkit/create-volt run build
 
+      - name: Replace workspace references with real versions
+        run: |
+          VERSION=$(node -p "require('./packages/volt/package.json').version")
+          echo "[release] Replacing workspace:* with ^${VERSION}"
+          node -e "
+            const fs = require('fs');
+            const replacements = [
+              'packages/volt/package.json',
+              'packages/volt-cli/package.json',
+            ];
+            for (const file of replacements) {
+              const content = fs.readFileSync(file, 'utf8');
+              const updated = content.replace(/\"workspace:\\*\"/g, JSON.stringify('^' + '${VERSION}'));
+              fs.writeFileSync(file, updated);
+              console.log('  Updated', file);
+            }
+          "
+
       - name: Publish npm packages (retry + propagation delay)
         shell: bash
         run: |
