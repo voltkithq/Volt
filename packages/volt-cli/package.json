@@ -2,6 +2,10 @@
   "name": "@voltkit/volt-cli",
   "version": "0.1.0",
   "license": "BSL-1.1",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/voltkithq/Volt"
+  },
   "type": "module",
   "bin": {
     "volt": "dist/index.js"

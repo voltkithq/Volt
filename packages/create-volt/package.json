@@ -2,6 +2,10 @@
   "name": "@voltkit/create-volt",
   "version": "0.1.0",
   "license": "BSL-1.1",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/voltkithq/Volt"
+  },
   "description": "Create a new Volt desktop application",
   "bin": {
     "create-volt": "dist/index.js"
