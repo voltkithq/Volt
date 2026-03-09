@@ -216,6 +216,8 @@ jobs:
 
           publish_with_retry crates/volt-napi @voltkit/volt-native
           sleep 20
+          publish_with_retry packages/volt-test @voltkit/volt-test
+          sleep 20
           publish_with_retry packages/volt voltkit
           sleep 20
           publish_with_retry packages/volt-cli @voltkit/volt-cli
