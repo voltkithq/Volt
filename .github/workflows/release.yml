@@ -176,12 +176,18 @@ jobs:
             local attempt=1
             while [ "$attempt" -le "$attempts" ]; do
               echo "[release] Publishing ${label} (attempt ${attempt}/${attempts})"
-              if (cd "$dir" && npm publish --provenance --access public); then
+              local output
+              if output=$(cd "$dir" && npm publish --provenance --access public 2>&1); then
+                return 0
+              fi
+              if echo "$output" | grep -q "You cannot publish over the previously published versions"; then
+                echo "[release] ${label} already published, skipping."
                 return 0
               fi
               if [ "$attempt" -lt "$attempts" ]; then
                 local delay=$((attempt * 20))
                 echo "[release] Publish failed for ${label}; retrying in ${delay}s..."
+                echo "$output"
                 sleep "$delay"
               fi
               attempt=$((attempt + 1))
