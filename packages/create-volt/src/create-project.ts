@@ -52,7 +52,7 @@ export async function createProject(options: ProjectOptions): Promise<void> {
   console.log('  Done! Next steps:');
   console.log();
   console.log(`  cd ${options.name}`);
-  console.log('  pnpm install');
-  console.log('  pnpm run dev');
+  console.log('  npm install');
+  console.log('  npm run dev');
   console.log();
 }

@@ -29,10 +29,10 @@ Follow: [`docs/onboarding-5-minutes.md`](onboarding-5-minutes.md)
 Quick path:
 
 ```bash
-pnpm create @voltkit/create-volt my-app
+npm create @voltkit/volt my-app
 cd my-app
-pnpm install
-pnpm dev
+npm install
+npm run dev
 ```
 
 ## Before Shipping Installers
@@ -46,8 +46,8 @@ volt doctor
 Then package:
 
 ```bash
-pnpm build
-pnpm package
+npm run build
+npm run package
 ```
 
 ## Feedback Channels
