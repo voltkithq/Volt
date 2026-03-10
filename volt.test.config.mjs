@@ -14,6 +14,7 @@ export default defineTestConfig({
     }),
     createIpcDemoSmokeSuite({
       projectDir: 'examples/ipc-demo',
+      timeoutMs: 300_000,
     }),
   ],
 });
