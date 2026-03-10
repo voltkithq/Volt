@@ -1,4 +1,8 @@
-# Volt
+<p align="center">
+  <img src="assets/volt-logo.png" alt="Volt" width="128" height="128">
+</p>
+
+<h1 align="center">Volt</h1>
 
 [![CI](https://github.com/voltkithq/Volt/actions/workflows/ci.yml/badge.svg)](https://github.com/voltkithq/Volt/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/voltkit)](https://www.npmjs.com/package/voltkit)
