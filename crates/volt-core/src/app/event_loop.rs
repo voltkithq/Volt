@@ -47,6 +47,7 @@ where
     let mut tray_handle: Option<crate::tray::TrayHandle> = None;
     let config = app.config;
     let asset_bundle = app.asset_bundle;
+    let mut web_context = app.web_context;
     let process_commands_proxy = app.proxy;
 
     debug_assert_window_invariants(&windows, &js_to_tao, &tao_to_js, &window_states);
@@ -196,6 +197,7 @@ where
                                     config.devtools,
                                     asset_bundle.clone(),
                                     resolved_js_id.clone(),
+                                    &mut web_context,
                                 ) {
                                     Ok(webview) => {
                                         let id = window_handle.id();

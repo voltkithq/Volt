@@ -1,8 +1,9 @@
 use std::borrow::Cow;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use url::Url;
-use wry::WebViewBuilder;
+use wry::{WebContext, WebViewBuilder};
 use wry::http::{Request, Response};
 
 use crate::embed::{self, AssetBundle};
@@ -15,8 +16,25 @@ mod tests;
 
 pub use config::{WebViewConfig, WebViewError, WebViewSource};
 
+/// Resolve the platform-appropriate WebView2 data directory for the given app name.
+///
+/// On Windows this is `%LOCALAPPDATA%/<name>`, on macOS `~/Library/Application Support/<name>`,
+/// on Linux `~/.local/share/<name>`. Falls back to a `.<name>` directory in the user's home.
+pub fn resolve_data_directory(app_name: &str) -> Option<PathBuf> {
+    dirs::data_local_dir().map(|base| base.join(app_name))
+}
+
+/// Create a shared `WebContext` for the application.
+///
+/// The returned context must be kept alive for the lifetime of all WebViews that use it.
+pub fn create_web_context(app_name: &str) -> WebContext {
+    let data_dir = resolve_data_directory(app_name);
+    WebContext::new(data_dir)
+}
+
 /// Create a wry WebView attached to the given tao Window.
 ///
+/// `web_context` is the shared WebView2 context (owns the data directory).
 /// `asset_bundle` is used by the `volt://` custom protocol to serve embedded assets.
 /// Pass `None` during development (the webview loads from the Vite dev server URL instead).
 pub fn create_webview(
@@ -25,10 +43,11 @@ pub fn create_webview(
     enable_devtools: bool,
     asset_bundle: Option<Arc<AssetBundle>>,
     js_window_id: String,
+    web_context: &mut WebContext,
 ) -> Result<wry::WebView, WebViewError> {
     let navigation_origins = policy::navigation_origins_for(config);
     let mut builder =
-        apply_devtools_config(WebViewBuilder::new(), enable_devtools || config.devtools)
+        apply_devtools_config(WebViewBuilder::new_with_web_context(web_context), enable_devtools || config.devtools)
             .with_transparent(config.transparent)
             .with_navigation_handler(move |url| {
                 policy::is_origin_allowed(&url, &navigation_origins)

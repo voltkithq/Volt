@@ -1,11 +1,12 @@
 use crate::embed::AssetBundle;
-use crate::webview::{WebViewConfig, create_webview};
+use crate::webview::{WebViewConfig, create_web_context, create_webview};
 use crate::window::{WindowConfig, WindowHandle, create_window};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tao::event_loop::{EventLoop, EventLoopBuilder, EventLoopProxy};
 use thiserror::Error;
+use wry::WebContext;
 
 mod command_handling;
 mod event_loop;
@@ -110,6 +111,8 @@ pub struct App {
     /// Reverse mapping to emit events with JS IDs.
     tao_to_js: HashMap<tao::window::WindowId, String>,
     asset_bundle: Option<Arc<AssetBundle>>,
+    /// Shared WebView2 context — owns the data directory and must outlive all WebViews.
+    web_context: WebContext,
 }
 
 impl App {
@@ -135,6 +138,8 @@ impl App {
         let event_loop = builder.build();
         let proxy = event_loop.create_proxy();
 
+        let web_context = create_web_context(&config.name);
+
         Ok(Self {
             config,
             event_loop: Some(event_loop),
@@ -144,6 +149,7 @@ impl App {
             js_to_tao: HashMap::new(),
             tao_to_js: HashMap::new(),
             asset_bundle: None,
+            web_context,
         })
     }
 
@@ -194,6 +200,7 @@ impl App {
             self.config.devtools,
             self.asset_bundle.clone(),
             js_window_id.clone(),
+            &mut self.web_context,
         )
         .map_err(|e| AppError::WebViewCreation(e.to_string()))?;
 
