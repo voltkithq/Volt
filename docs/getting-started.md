@@ -6,6 +6,7 @@ Need a faster setup path? See [5-Minute Onboarding](onboarding-5-minutes.md).
 
 - [Node.js](https://nodejs.org/) >= 20
 - [Rust](https://rustup.rs/) (stable toolchain) - for native builds
+- Windows only: [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) (comes pre-installed on Windows 11)
 
 ## Create a Project
 

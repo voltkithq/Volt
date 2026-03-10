@@ -40,6 +40,12 @@ Run `cargo clean` periodically to reclaim disk space from incremental compilatio
 - `packages/create-volt`: project scaffolder
 - `examples/`: sample apps (`hello-world`, `todo-app`, `ipc-demo`)
 
+## Prerequisites
+
+- [Node.js](https://nodejs.org/) >= 20
+- [Rust](https://rustup.rs/) (stable toolchain) - for native builds
+- Windows only: [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) (comes pre-installed on Windows 11)
+
 ## Quick Start
 
 ```bash
