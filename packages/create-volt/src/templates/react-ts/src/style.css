@@ -20,6 +20,10 @@ body {
   min-height: 100vh;
 }
 
+#root {
+  width: 100%;
+}
+
 .app {
   max-width: 480px;
   margin: 0 auto;
