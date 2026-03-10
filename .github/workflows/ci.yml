@@ -492,9 +492,10 @@ jobs:
     name: E2E Smoke (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
-    # Windows GUI smoke tests are unreliable on GitHub-hosted runners
-    # because the webview may not initialize within the timeout window.
-    continue-on-error: ${{ matrix.os == 'windows-latest' }}
+    # GUI smoke tests are unreliable on headless GitHub-hosted runners (Windows/macOS)
+    # because the native window may not initialize without a display session.
+    # Linux uses xvfb-run to provide a virtual display.
+    continue-on-error: ${{ matrix.os == 'windows-latest' || matrix.os == 'macos-latest' }}
     strategy:
       fail-fast: false
       matrix:
