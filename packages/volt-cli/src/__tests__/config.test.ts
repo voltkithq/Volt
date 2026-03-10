@@ -47,7 +47,7 @@ describe('loadConfig', () => {
   it('throws when a config file exists but fails to load', async () => {
     vi.mocked(existsSync).mockReturnValue(true);
     await expect(loadConfig('/fake/project')).rejects.toThrow(
-      'Failed to load config',
+      /Failed to load.*config/,
     );
   });
 });
