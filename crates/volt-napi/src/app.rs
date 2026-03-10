@@ -172,10 +172,7 @@ impl VoltApp {
 
         if let Err(err) = wait_for_runtime_start(&native_thread) {
             // Try to extract the actual error from the native thread.
-            let detail = startup_error
-                .lock()
-                .ok()
-                .and_then(|guard| guard.clone());
+            let detail = startup_error.lock().ok().and_then(|guard| guard.clone());
             let message = match detail {
                 Some(native_err) => format!("{err}: {native_err}"),
                 None => err,

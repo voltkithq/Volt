@@ -3,8 +3,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use url::Url;
-use wry::{WebContext, WebViewBuilder};
 use wry::http::{Request, Response};
+use wry::{WebContext, WebViewBuilder};
 
 use crate::embed::{self, AssetBundle};
 use crate::ipc::IPC_MAX_REQUEST_BYTES;
@@ -46,12 +46,12 @@ pub fn create_webview(
     web_context: &mut WebContext,
 ) -> Result<wry::WebView, WebViewError> {
     let navigation_origins = policy::navigation_origins_for(config);
-    let mut builder =
-        apply_devtools_config(WebViewBuilder::new_with_web_context(web_context), enable_devtools || config.devtools)
-            .with_transparent(config.transparent)
-            .with_navigation_handler(move |url| {
-                policy::is_origin_allowed(&url, &navigation_origins)
-            });
+    let mut builder = apply_devtools_config(
+        WebViewBuilder::new_with_web_context(web_context),
+        enable_devtools || config.devtools,
+    )
+    .with_transparent(config.transparent)
+    .with_navigation_handler(move |url| policy::is_origin_allowed(&url, &navigation_origins));
 
     // Always inject the Volt IPC bridge.
     let ipc_init = crate::ipc::ipc_init_script();
