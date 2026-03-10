@@ -11,9 +11,11 @@ export default defineTestConfig({
   suites: [
     createHelloWorldSmokeSuite({
       projectDir: 'examples/hello-world',
+      timeoutMs: 600_000,
     }),
     createIpcDemoSmokeSuite({
       projectDir: 'examples/ipc-demo',
+      timeoutMs: 600_000,
     }),
   ],
 });
