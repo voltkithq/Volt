@@ -72,7 +72,11 @@ pub(super) fn wait_for_runtime_start_with_probe(
         return Ok(());
     }
 
-    Err("Native runtime failed to start within timeout".to_string())
+    if native_thread.is_finished() {
+        Err("Native runtime exited during startup (check WebView2 installation and data directory permissions)".to_string())
+    } else {
+        Err("Native runtime failed to start within timeout".to_string())
+    }
 }
 
 #[cfg(not(target_os = "macos"))]

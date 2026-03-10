@@ -149,11 +149,16 @@ impl VoltApp {
 
         let bridge_thread = spawn_bridge_thread(callbacks, dispatch_rx)?;
         let native_tx = dispatch_tx.clone();
+        let startup_error: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+        let startup_error_writer = Arc::clone(&startup_error);
         let native_thread = thread::Builder::new()
             .name("volt-native-loop".to_string())
             .spawn(move || {
                 let result = run_native_loop(app_config, windows, native_tx.clone());
                 if let Err(err) = &result {
+                    if let Ok(mut guard) = startup_error_writer.lock() {
+                        *guard = Some(err.clone());
+                    }
                     let payload = json!({
                         "type": "runtime-error",
                         "error": err,
@@ -166,8 +171,17 @@ impl VoltApp {
             .map_err(|e| napi::Error::from_reason(format!("Failed to spawn native thread: {e}")))?;
 
         if let Err(err) = wait_for_runtime_start(&native_thread) {
+            // Try to extract the actual error from the native thread.
+            let detail = startup_error
+                .lock()
+                .ok()
+                .and_then(|guard| guard.clone());
+            let message = match detail {
+                Some(native_err) => format!("{err}: {native_err}"),
+                None => err,
+            };
             spawn_startup_timeout_cleanup(native_thread, bridge_thread, dispatch_tx);
-            return Err(napi::Error::from_reason(err));
+            return Err(napi::Error::from_reason(message));
         }
 
         let mut runtime = self
