@@ -13,8 +13,22 @@ interface PromptResponse {
   framework?: ProjectOptions['framework'];
 }
 
+const VALID_FRAMEWORKS = ['vanilla', 'react', 'svelte', 'vue', 'enterprise'] as const;
+
+function parseFrameworkArg(args: string[]): ProjectOptions['framework'] | undefined {
+  const idx = args.indexOf('--framework');
+  if (idx === -1 || idx + 1 >= args.length) return undefined;
+  const value = args[idx + 1];
+  if (VALID_FRAMEWORKS.includes(value as ProjectOptions['framework'])) {
+    return value as ProjectOptions['framework'];
+  }
+  console.error(`  Error: Invalid framework "${value}". Valid options: ${VALID_FRAMEWORKS.join(', ')}`);
+  process.exit(1);
+}
+
 async function main(): Promise<void> {
-  const argName = process.argv[2];
+  const argName = process.argv[2]?.startsWith('--') ? undefined : process.argv[2];
+  const frameworkArg = parseFrameworkArg(process.argv);
 
   console.log();
   console.log('  Volt - Lightweight Desktop App Framework');
@@ -29,7 +43,7 @@ async function main(): Promise<void> {
         initial: 'my-volt-app',
       },
       {
-        type: 'select',
+        type: frameworkArg ? null : 'select',
         name: 'framework',
         message: 'Select a framework:',
         choices: [
@@ -53,7 +67,7 @@ async function main(): Promise<void> {
   const options: ProjectOptions = {
     name: projectName,
     displayName: toDisplayName(projectName),
-    framework: response.framework ?? 'vanilla',
+    framework: frameworkArg ?? response.framework ?? 'vanilla',
   };
 
   await createProject(options);
