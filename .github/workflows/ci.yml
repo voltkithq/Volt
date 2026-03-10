@@ -496,6 +496,9 @@ jobs:
     # because the native window may not initialize without a display session.
     # Linux uses xvfb-run to provide a virtual display.
     continue-on-error: ${{ matrix.os == 'windows-latest' || matrix.os == 'macos-latest' }}
+    env:
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: "sccache"
     strategy:
       fail-fast: false
       matrix:
@@ -503,16 +506,23 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Exclude build dirs from Windows Defender
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: Set-MpPreference -ExclusionPath "$env:USERPROFILE\.cargo", "$env:GITHUB_WORKSPACE", "$env:RUNNER_TEMP"
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Cache Cargo
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
+      - name: Cache Cargo registry
         uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            target
           key: ${{ runner.os }}-cargo-e2e-smoke-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-e2e-smoke-
