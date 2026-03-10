@@ -492,9 +492,13 @@ jobs:
     name: E2E Smoke (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
-    # Windows GUI smoke tests are unreliable on GitHub-hosted runners
-    # because the webview may not initialize within the timeout window.
-    continue-on-error: ${{ matrix.os == 'windows-latest' }}
+    # GUI smoke tests are unreliable on headless GitHub-hosted runners (Windows/macOS)
+    # because the native window may not initialize without a display session.
+    # Linux uses xvfb-run to provide a virtual display.
+    continue-on-error: ${{ matrix.os == 'windows-latest' || matrix.os == 'macos-latest' }}
+    env:
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: "sccache"
     strategy:
       fail-fast: false
       matrix:
@@ -502,16 +506,23 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Exclude build dirs from Windows Defender
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: Set-MpPreference -ExclusionPath "$env:USERPROFILE\.cargo", "$env:GITHUB_WORKSPACE", "$env:RUNNER_TEMP"
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Cache Cargo
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
+      - name: Cache Cargo registry
         uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            target
           key: ${{ runner.os }}-cargo-e2e-smoke-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-e2e-smoke-
@@ -549,6 +560,7 @@ jobs:
         shell: bash
         env:
           VOLT_E2E_RETRIES: "1"
+          WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: "--disable-gpu --no-sandbox"
         run: |
           if [ "$RUNNER_OS" = "Linux" ]; then
             xvfb-run --auto-servernum node scripts/ci/e2e-smoke.mjs
