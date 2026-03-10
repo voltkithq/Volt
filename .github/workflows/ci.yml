@@ -560,6 +560,7 @@ jobs:
         shell: bash
         env:
           VOLT_E2E_RETRIES: "1"
+          WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: "--disable-gpu --no-sandbox"
         run: |
           if [ "$RUNNER_OS" = "Linux" ]; then
             xvfb-run --auto-servernum node scripts/ci/e2e-smoke.mjs
