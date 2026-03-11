@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
+import { resolve } from 'node:path';
 import { loadConfig } from '../utils/config.js';
-import { createApp } from 'voltkit';
-import { __internalDispatchMenuEvent } from 'voltkit/internal';
+import { createApp } from 'volt-framework';
+import { __internalDispatchMenuEvent } from 'volt-framework/internal';
 import { loadBackendEntrypointForDev } from './dev/backend.js';
 import type { NativeHostWindowConfig } from './native-host-protocol.js';
 import {
@@ -141,6 +142,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
       minHeight: config.window?.minHeight,
       resizable: config.window?.resizable ?? true,
       decorations: config.window?.decorations ?? true,
+      icon: config.window?.icon ? resolve(cwd, config.window.icon) : undefined,
     },
   };
 

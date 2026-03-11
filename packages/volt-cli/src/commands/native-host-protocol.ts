@@ -1,4 +1,4 @@
-import type { Permission } from 'voltkit';
+import type { Permission } from 'volt-framework';
 
 export const NATIVE_HOST_PROTOCOL_VERSION = 1;
 
@@ -16,6 +16,7 @@ export interface NativeHostWindowConfig {
     minHeight?: number;
     resizable: boolean;
     decorations: boolean;
+    icon?: string;
   };
 }
 

@@ -1,4 +1,4 @@
-import { defineConfig } from 'voltkit';
+import { defineConfig } from 'volt-framework';
 
 export default defineConfig({
   name: 'My Volt App',
@@ -8,5 +8,6 @@ export default defineConfig({
     width: 800,
     height: 600,
     title: 'My Volt App',
+    icon: './public/favicon.png',
   },
 });

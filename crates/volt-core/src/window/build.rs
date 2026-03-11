@@ -1,6 +1,6 @@
 use tao::dpi::{LogicalPosition, LogicalSize};
 use tao::event_loop::EventLoopWindowTarget;
-use tao::window::WindowBuilder;
+use tao::window::{Icon, WindowBuilder};
 
 use super::{WindowConfig, WindowError, WindowHandle};
 
@@ -18,6 +18,13 @@ pub fn create_window<T: 'static>(
         .with_always_on_top(config.always_on_top)
         .with_maximized(config.maximized)
         .with_visible(config.visible);
+
+    if let Some(ref icon_data) = config.icon_rgba {
+        if let Ok(icon) = Icon::from_rgba(icon_data.clone(), config.icon_width, config.icon_height)
+        {
+            builder = builder.with_window_icon(Some(icon));
+        }
+    }
 
     if let Some((min_w, min_h)) =
         resolve_optional_pair(config.min_width, config.min_height, 0.0, 0.0)

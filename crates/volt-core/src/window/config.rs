@@ -67,6 +67,18 @@ pub struct WindowConfig {
 
     /// Initial Y position (if not set, OS decides).
     pub y: Option<f64>,
+
+    /// Window icon RGBA data (decoded from PNG at config time).
+    #[serde(skip)]
+    pub icon_rgba: Option<Vec<u8>>,
+
+    /// Window icon width in pixels.
+    #[serde(default)]
+    pub icon_width: u32,
+
+    /// Window icon height in pixels.
+    #[serde(default)]
+    pub icon_height: u32,
 }
 
 fn default_title() -> String {
@@ -103,6 +115,9 @@ impl Default for WindowConfig {
             visible: true,
             x: None,
             y: None,
+            icon_rgba: None,
+            icon_width: 0,
+            icon_height: 0,
         }
     }
 }

@@ -16,7 +16,7 @@ export interface VoltConfig {
   package?: PackageConfig;
   /** Auto-updater configuration. */
   updater?: UpdaterConfig;
-  /** Boa runtime pool configuration for production builds. */
+  /** QuickJS runtime pool configuration for production builds. */
   runtime?: RuntimeConfig;
   /** Legacy alias for runtime.poolSize. Prefer using runtime.poolSize. */
   runtimePoolSize?: number;
@@ -56,6 +56,8 @@ export interface WindowOptions {
   x?: number;
   /** Initial Y position. */
   y?: number;
+  /** Path to the window icon (PNG). Displayed in the title bar and taskbar. */
+  icon?: string;
 }
 
 /** Capability-based permissions that must be declared in volt.config.ts. */
@@ -80,7 +82,7 @@ export interface BuildConfig {
 
 /** Runtime execution configuration. */
 export interface RuntimeConfig {
-  /** Number of Boa runtimes in the IPC pool. Clamped to [2, 4] by the runner. */
+  /** Number of QuickJS runtimes in the IPC pool. Clamped to [2, 4] by the runner. */
   poolSize?: number;
 }
 

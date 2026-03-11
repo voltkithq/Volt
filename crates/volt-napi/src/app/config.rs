@@ -2,9 +2,24 @@ use serde_json::Value;
 use volt_core::webview::{WebViewConfig, WebViewSource};
 use volt_core::window::WindowConfig;
 
+/// Load a PNG file and decode it to RGBA pixel data.
+fn load_icon_rgba(path: &str) -> Option<(Vec<u8>, u32, u32)> {
+    let bytes = std::fs::read(path).ok()?;
+    let img = image::load_from_memory(&bytes).ok()?.into_rgba8();
+    let (w, h) = img.dimensions();
+    Some((img.into_raw(), w, h))
+}
+
 /// Parse a JSON value into a WindowConfig.
 pub(super) fn parse_window_config(config: &Value) -> WindowConfig {
     let window = config.get("window").unwrap_or(config);
+
+    let (icon_rgba, icon_width, icon_height) = window
+        .get("icon")
+        .and_then(|v| v.as_str())
+        .and_then(load_icon_rgba)
+        .map(|(data, w, h)| (Some(data), w, h))
+        .unwrap_or((None, 0, 0));
 
     WindowConfig {
         title: window
@@ -50,6 +65,9 @@ pub(super) fn parse_window_config(config: &Value) -> WindowConfig {
             .unwrap_or(true),
         x: window.get("x").and_then(|v| v.as_f64()),
         y: window.get("y").and_then(|v| v.as_f64()),
+        icon_rgba,
+        icon_width,
+        icon_height,
     }
 }
 

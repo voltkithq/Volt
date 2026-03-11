@@ -85,7 +85,22 @@ fn parse_runner_config_value(parsed: &Value) -> Result<RunnerConfig, RunnerError
     })
 }
 
+/// Load a PNG file and decode it to RGBA pixel data.
+fn load_icon_rgba(path: &str) -> Option<(Vec<u8>, u32, u32)> {
+    let bytes = std::fs::read(path).ok()?;
+    let img = image::load_from_memory(&bytes).ok()?.into_rgba8();
+    let (w, h) = img.dimensions();
+    Some((img.into_raw(), w, h))
+}
+
 fn parse_window_config(parsed: &Value) -> WindowConfig {
+    let (icon_rgba, icon_width, icon_height) = parsed
+        .get("icon")
+        .and_then(Value::as_str)
+        .and_then(load_icon_rgba)
+        .map(|(data, w, h)| (Some(data), w, h))
+        .unwrap_or((None, 0, 0));
+
     WindowConfig {
         title: parsed
             .get("title")
@@ -127,6 +142,9 @@ fn parse_window_config(parsed: &Value) -> WindowConfig {
             .unwrap_or(true),
         x: parsed.get("x").and_then(Value::as_f64),
         y: parsed.get("y").and_then(Value::as_f64),
+        icon_rgba,
+        icon_width,
+        icon_height,
     }
 }
 
