@@ -23,6 +23,7 @@ where
     pub(super) hotkey_manager: &'a GlobalHotKeyManager,
     pub(super) registered_hotkeys: &'a mut HashMap<String, HotKey>,
     pub(super) app_menu: &'a mut Option<muda::Menu>,
+    pub(super) menu_id_map: &'a mut HashMap<String, String>,
     pub(super) tray_handle: &'a mut Option<crate::tray::TrayHandle>,
     pub(super) control_flow: &'a mut ControlFlow,
     pub(super) on_event: &'a mut F,

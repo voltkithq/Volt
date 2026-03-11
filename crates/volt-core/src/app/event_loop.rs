@@ -44,6 +44,7 @@ where
     let mut tao_to_js = app.tao_to_js;
     let mut registered_hotkeys: HashMap<String, HotKey> = HashMap::new();
     let mut app_menu: Option<muda::Menu> = None;
+    let mut menu_id_map: HashMap<String, String> = HashMap::new();
     let mut tray_handle: Option<crate::tray::TrayHandle> = None;
     let config = app.config;
     let asset_bundle = app.asset_bundle;
@@ -69,6 +70,7 @@ where
                     hotkey_manager: &hotkey_manager,
                     registered_hotkeys: &mut registered_hotkeys,
                     app_menu: &mut app_menu,
+                    menu_id_map: &mut menu_id_map,
                     tray_handle: &mut tray_handle,
                     control_flow,
                     on_event: &mut on_event,
@@ -95,7 +97,7 @@ where
             }
         }
 
-        native_events::poll_native_runtime_events(&mut on_event);
+        native_events::poll_native_runtime_events(&mut on_event, &menu_id_map);
 
         match event {
             Event::WindowEvent {

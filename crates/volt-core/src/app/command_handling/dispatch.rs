@@ -21,6 +21,7 @@ where
     let hotkey_manager = context.hotkey_manager;
     let registered_hotkeys = &mut *context.registered_hotkeys;
     let app_menu = &mut *context.app_menu;
+    let menu_id_map = &mut *context.menu_id_map;
     let tray_handle = &mut *context.tray_handle;
     let control_flow = &mut *context.control_flow;
     let on_event = &mut *context.on_event;
@@ -122,7 +123,7 @@ where
             on_event(&AppEvent::IpcMessage { js_window_id, raw });
         }
         AppCommand::SetAppMenu { items, reply } => {
-            let result = apply_menu_to_windows(windows, &items, app_menu);
+            let result = apply_menu_to_windows(windows, &items, app_menu, menu_id_map);
             let _ = reply.send(result);
         }
         AppCommand::RegisterShortcut { accelerator, reply } => {

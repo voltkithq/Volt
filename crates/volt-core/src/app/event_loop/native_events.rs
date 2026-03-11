@@ -1,13 +1,17 @@
+use std::collections::HashMap;
+
 use super::super::AppEvent;
 
-pub(super) fn poll_native_runtime_events<F>(on_event: &mut F)
+pub(super) fn poll_native_runtime_events<F>(on_event: &mut F, menu_id_map: &HashMap<String, String>)
 where
     F: FnMut(&AppEvent),
 {
     if let Some(menu_event) = crate::menu::check_menu_event() {
         let internal_menu_id = menu_event.id().0.to_string();
-        let resolved_menu_id =
-            crate::menu::resolve_menu_event_id(&internal_menu_id).unwrap_or(internal_menu_id);
+        let resolved_menu_id = menu_id_map
+            .get(&internal_menu_id)
+            .cloned()
+            .unwrap_or(internal_menu_id);
         on_event(&AppEvent::MenuEvent {
             menu_id: resolved_menu_id,
         });

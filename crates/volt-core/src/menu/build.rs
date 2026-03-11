@@ -1,33 +1,16 @@
 use std::collections::HashMap;
-use std::sync::{Mutex, OnceLock};
 
 use muda::{Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
 
 use super::accelerator::{parse_menu_accelerator, predefined_item_from_role};
 use super::{MenuError, MenuItemConfig};
 
-static MENU_EVENT_ID_MAP: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
-
-fn menu_event_id_map() -> &'static Mutex<HashMap<String, String>> {
-    MENU_EVENT_ID_MAP.get_or_init(|| Mutex::new(HashMap::new()))
-}
-
-fn update_menu_event_id_map(mapping: HashMap<String, String>) {
-    if let Ok(mut guard) = menu_event_id_map().lock() {
-        *guard = mapping;
-    }
-}
-
-/// Resolve a native internal menu ID to a configured stable menu ID, if one exists.
-pub fn resolve_menu_event_id(internal_id: &str) -> Option<String> {
-    menu_event_id_map()
-        .lock()
-        .ok()
-        .and_then(|guard| guard.get(internal_id).cloned())
-}
-
 /// Build a muda Menu from a list of item configurations.
-pub fn build_menu(items: &[MenuItemConfig]) -> Result<Menu, MenuError> {
+///
+/// Returns the built menu together with a mapping from muda's internal menu-item
+/// IDs to the caller-supplied stable IDs.  The caller owns this mapping and can
+/// use it to resolve menu events without relying on any process-wide global state.
+pub fn build_menu(items: &[MenuItemConfig]) -> Result<(Menu, HashMap<String, String>), MenuError> {
     let menu = Menu::new();
     let mut id_mapping = HashMap::new();
 
@@ -35,8 +18,7 @@ pub fn build_menu(items: &[MenuItemConfig]) -> Result<Menu, MenuError> {
         add_menu_item(&menu, item_config, &mut id_mapping)?;
     }
 
-    update_menu_event_id_map(id_mapping);
-    Ok(menu)
+    Ok((menu, id_mapping))
 }
 
 fn add_menu_item(
@@ -168,12 +150,4 @@ fn add_submenu_item(
 /// Poll for menu events. Call this in the event loop.
 pub fn check_menu_event() -> Option<MenuEvent> {
     MenuEvent::receiver().try_recv().ok()
-}
-
-#[cfg(test)]
-pub(super) fn menu_event_id_map_snapshot() -> HashMap<String, String> {
-    menu_event_id_map()
-        .lock()
-        .expect("menu id mapping lock")
-        .clone()
 }
