@@ -8,7 +8,9 @@
     "preview": "volt preview",
     "lint": "eslint . --max-warnings 0",
     "test": "pnpm exec vitest run",
-    "verify:secure-storage:manual": "node ./scripts/manual-secure-storage-checklist.mjs"
+    "verify:secure-storage:manual": "node ./scripts/manual-secure-storage-checklist.mjs",
+    "package": "volt package",
+    "doctor": "volt doctor"
   },
   "dependencies": {
     "voltkit": "workspace:*",

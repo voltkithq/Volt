@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "volt dev",
     "build": "volt build",
-    "preview": "volt preview"
+    "preview": "volt preview",
+    "package": "volt package",
+    "doctor": "volt doctor"
   },
   "dependencies": {
     "voltkit": "^0.1.0"

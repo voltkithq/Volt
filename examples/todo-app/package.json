@@ -6,7 +6,9 @@
     "dev": "volt dev",
     "build": "volt build",
     "lint": "eslint . --max-warnings 0",
-    "test": "pnpm exec vitest run"
+    "test": "pnpm exec vitest run",
+    "package": "volt package",
+    "doctor": "volt doctor"
   },
   "dependencies": {
     "voltkit": "workspace:*",
