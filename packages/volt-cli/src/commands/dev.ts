@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import { loadConfig } from '../utils/config.js';
-import { createApp } from 'volt-framework';
-import { __internalDispatchMenuEvent } from 'volt-framework/internal';
+import { createApp } from 'voltkit';
+import { __internalDispatchMenuEvent } from 'voltkit/internal';
 import { loadBackendEntrypointForDev } from './dev/backend.js';
 import type { NativeHostWindowConfig } from './native-host-protocol.js';
 import {

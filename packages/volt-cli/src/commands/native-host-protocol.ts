@@ -1,4 +1,4 @@
-import type { Permission } from 'volt-framework';
+import type { Permission } from 'voltkit';
 
 export const NATIVE_HOST_PROTOCOL_VERSION = 1;
 

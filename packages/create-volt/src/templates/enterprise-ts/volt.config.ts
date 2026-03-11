@@ -1,4 +1,4 @@
-import { defineConfig } from 'volt-framework';
+import { defineConfig } from 'voltkit';
 
 export default defineConfig({
   name: 'My Volt Enterprise App',

@@ -38,6 +38,9 @@ fn test_window_config_serde_roundtrip() {
         visible: false,
         x: Some(100.0),
         y: Some(200.0),
+        icon_rgba: None,
+        icon_width: 0,
+        icon_height: 0,
     };
     let json = serde_json::to_string(&config).expect("serialize config");
     let restored: WindowConfig = serde_json::from_str(&json).expect("deserialize config");
