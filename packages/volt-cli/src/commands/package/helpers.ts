@@ -143,13 +143,14 @@ export function runPackagingTool(
   onMissingTool: () => void,
   failureMessage: string,
   execute: ExecFileSyncFn = execFileSync as ExecFileSyncFn,
-): void {
+): boolean {
   try {
     execute(command, args, { stdio: 'inherit' });
+    return true;
   } catch (error) {
     if (isMissingExecutableError(error)) {
       onMissingTool();
-      return;
+      return false;
     }
     console.error(failureMessage, error);
     process.exit(1);
@@ -162,10 +163,10 @@ export function runPackagingToolWithFallback(
   onMissingBoth: () => void,
   failureMessage: string,
   execute: ExecFileSyncFn = execFileSync as ExecFileSyncFn,
-): void {
+): boolean {
   try {
     execute(primary.command, primary.args, { stdio: 'inherit' });
-    return;
+    return true;
   } catch (error) {
     if (!isMissingExecutableError(error)) {
       console.error(failureMessage, error);
@@ -175,10 +176,11 @@ export function runPackagingToolWithFallback(
 
   try {
     execute(fallback.command, fallback.args, { stdio: 'inherit' });
+    return true;
   } catch (fallbackError) {
     if (isMissingExecutableError(fallbackError)) {
       onMissingBoth();
-      return;
+      return false;
     }
     console.error(failureMessage, fallbackError);
     process.exit(1);
