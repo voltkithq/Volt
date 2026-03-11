@@ -67,6 +67,7 @@ fn test_signature_validation_regression_matrix() {
             url,
             signature: String::new(),
             sha256: sha256_hex.clone(),
+            target: current_target().to_string(),
         };
         info.signature = metadata_signature(&signing_key, &info);
         info
@@ -81,6 +82,7 @@ fn test_signature_validation_regression_matrix() {
             url: "https://updates.example.com/artifact".to_string(),
             signature: base64::engine::general_purpose::STANDARD.encode([0_u8; 64]),
             sha256: sha256_hex.clone(),
+            target: current_target().to_string(),
         },
     )
     .expect_err("invalid signature must fail");
@@ -92,6 +94,7 @@ fn test_signature_validation_regression_matrix() {
             url,
             signature: String::new(),
             sha256: "0".repeat(64),
+            target: current_target().to_string(),
         };
         info.signature = metadata_signature(&signing_key, &info);
         info
@@ -108,6 +111,7 @@ fn test_signature_validation_regression_matrix() {
             url: "https://updates.example.com/artifact".to_string(),
             signature: legacy_artifact_signature,
             sha256: sha256_hex.clone(),
+            target: current_target().to_string(),
         },
     )
     .expect_err("legacy artifact-only signatures must fail");
@@ -119,6 +123,7 @@ fn test_signature_validation_regression_matrix() {
             url: "https://updates.example.com/artifact".to_string(),
             signature: String::new(),
             sha256: sha256_hex.clone(),
+            target: current_target().to_string(),
         };
         info.signature = metadata_signature(&signing_key, &info);
         info.version = "2.0.0".to_string();
@@ -136,6 +141,7 @@ fn test_signature_validation_regression_matrix() {
             url: "https://updates.example.com/artifact".to_string(),
             signature: String::new(),
             sha256: sha256_hex.clone(),
+            target: current_target().to_string(),
         };
         info.signature = metadata_signature(&signing_key, &info);
         info.url = "https://updates.example.com/artifact?mirror=1".to_string();

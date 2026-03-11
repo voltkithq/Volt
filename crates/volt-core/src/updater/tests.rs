@@ -40,6 +40,7 @@ pub(super) fn signed_update_info(version: &str, url: &str, sha256: &str) -> Upda
         url: url.to_string(),
         signature: String::new(),
         sha256: sha256.to_string(),
+        target: current_target().to_string(),
     };
     info.signature = sign_update_info(&info);
     info

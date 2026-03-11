@@ -78,6 +78,11 @@ pub(crate) fn parse_update_info_json(value: Value) -> Result<UpdateInfo, String>
         url: read_required("url")?,
         signature: read_required("signature")?,
         sha256: read_required("sha256")?,
+        target: object
+            .get("target")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
     })
 }
 
