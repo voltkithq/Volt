@@ -13,7 +13,7 @@ pub(crate) fn verify_invoker_process_matches_target(
     pid: u32,
     target_path: &Path,
 ) -> Result<(), String> {
-    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::Foundation::{CloseHandle, ERROR_INVALID_PARAMETER, GetLastError};
     use windows_sys::Win32::System::Threading::{
         OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
     };
@@ -21,8 +21,14 @@ pub(crate) fn verify_invoker_process_matches_target(
     unsafe {
         let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
         if handle.is_null() {
-            // Process already exited — verification is moot, let the update proceed.
-            return Ok(());
+            let error = GetLastError();
+            if error == ERROR_INVALID_PARAMETER {
+                // Process no longer exists — verification is moot, let the update proceed.
+                return Ok(());
+            }
+            return Err(format!(
+                "failed to open process {pid} for verification (OS error {error})"
+            ));
         }
 
         let mut len: u32 = 32_768;
@@ -217,7 +223,10 @@ fn validate_target_path(
 
 #[cfg(target_os = "windows")]
 pub(crate) fn wait_for_process_exit(pid: u32, timeout: Duration) -> Result<(), String> {
-    use windows_sys::Win32::Foundation::{CloseHandle, WAIT_FAILED, WAIT_OBJECT_0, WAIT_TIMEOUT};
+    use windows_sys::Win32::Foundation::{
+        CloseHandle, ERROR_INVALID_PARAMETER, GetLastError, WAIT_FAILED, WAIT_OBJECT_0,
+        WAIT_TIMEOUT,
+    };
     use windows_sys::Win32::System::Threading::{
         OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, WaitForSingleObject,
     };
@@ -230,8 +239,14 @@ pub(crate) fn wait_for_process_exit(pid: u32, timeout: Duration) -> Result<(), S
             pid,
         );
         if handle.is_null() {
-            // Process already exited between pre-flight validation and wait.
-            return Ok(());
+            let error = GetLastError();
+            if error == ERROR_INVALID_PARAMETER {
+                // Process no longer exists — already exited.
+                return Ok(());
+            }
+            return Err(format!(
+                "failed to open process {pid} for wait (OS error {error})"
+            ));
         }
 
         let timeout_ms = timeout.as_millis().min(u32::MAX as u128) as u32;

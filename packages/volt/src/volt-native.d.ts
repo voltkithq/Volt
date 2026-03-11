@@ -135,6 +135,7 @@ declare module '@voltkit/volt-native' {
     url: string;
     signature: string;
     sha256: string;
+    target: string;
   }
 
   /** Check for available updates. Returns update info or null. */

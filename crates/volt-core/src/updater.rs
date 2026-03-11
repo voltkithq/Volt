@@ -5,13 +5,13 @@ mod util;
 mod verification;
 
 pub use self::config::{UpdateConfig, UpdateInfo};
+pub use self::platform::current_target;
 pub use self::verification::UpdateError;
 
 use self::http::{
     UPDATE_CHECK_RESPONSE_MAX_BYTES, build_http_client, fetch_with_validated_redirects,
     read_response_body_limited,
 };
-use self::platform::current_target;
 use self::util::{build_update_check_url, validate_url_security};
 
 /// Check for available updates.

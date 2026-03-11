@@ -177,12 +177,12 @@ export class VoltGlobalShortcut {
 
 export const updaterCheck = vi.fn(
   async (_config: { endpoint: string; public_key: string; current_version: string }) =>
-    null as { version: string; url: string; signature: string; sha256: string } | null,
+    null as { version: string; url: string; signature: string; sha256: string; target: string } | null,
 );
 export const updaterDownloadAndVerify = vi.fn(
   async (
     _config: { endpoint: string; public_key: string; current_version: string },
-    _info: { version: string; url: string; signature: string; sha256: string },
+    _info: { version: string; url: string; signature: string; sha256: string; target: string },
   ) => Buffer.from('mock-binary'),
 );
 export const updaterApply = vi.fn((_data: Buffer) => {});

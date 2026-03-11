@@ -10,6 +10,7 @@ interface UpdateInfo {
   url: string;
   signature: string;
   sha256: string;
+  target: string;
 }
 
 export async function checkForUpdate(_options: UpdateCheckOptions): Promise<UpdateInfo | null> {
@@ -22,6 +23,7 @@ export async function checkForUpdate(_options: UpdateCheckOptions): Promise<Upda
     url: result.url,
     signature: result.signature,
     sha256: result.sha256,
+    target: result.target,
   };
 }
 
