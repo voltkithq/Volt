@@ -97,6 +97,50 @@ fn validate_rollback_paths_accepts_expected_layout() {
 }
 
 #[cfg(target_os = "windows")]
+#[test]
+fn verify_invoker_rejects_inaccessible_process() {
+    // PID 4 is the System process on Windows — always running.
+    // Non-elevated: OpenProcess fails with access denied → should error (not silently pass).
+    // Elevated: OpenProcess succeeds but QueryFullProcessImageNameW or path mismatch fails.
+    // Either way, the result must NOT be Ok(()).
+    let result = verify_invoker_process_matches_target(4, Path::new(r"C:\dummy.exe"));
+    assert!(
+        result.is_err(),
+        "PID 4 (System) should not silently pass verification: {result:?}"
+    );
+    let err = result.unwrap_err();
+    assert!(
+        err.contains("failed to open process")
+            || err.contains("does not match")
+            || err.contains("failed to resolve executable path"),
+        "unexpected error: {err}"
+    );
+}
+
+#[cfg(target_os = "windows")]
+#[test]
+fn verify_invoker_allows_dead_process() {
+    // A PID that almost certainly doesn't exist should be treated as already exited.
+    let result = verify_invoker_process_matches_target(u32::MAX - 1, Path::new(r"C:\dummy.exe"));
+    assert!(
+        result.is_ok(),
+        "dead PID should be treated as exited: {result:?}"
+    );
+}
+
+#[cfg(target_os = "windows")]
+#[test]
+fn wait_for_process_exit_succeeds_for_dead_pid() {
+    use std::time::Duration;
+    // A PID that almost certainly doesn't exist
+    let result = wait_for_process_exit(u32::MAX - 1, Duration::from_secs(1));
+    assert!(
+        result.is_ok(),
+        "dead PID should be treated as already exited: {result:?}"
+    );
+}
+
+#[cfg(target_os = "windows")]
 fn install_args_for_paths(pid: u32, target_path: PathBuf, staged_path: PathBuf) -> InstallArgs {
     InstallArgs {
         pid,

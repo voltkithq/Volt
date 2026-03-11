@@ -76,6 +76,48 @@ fn parse_update_info_json_requires_sha256() {
 }
 
 #[test]
+fn parse_update_info_json_preserves_target_field() {
+    let parsed = parse_update_info_json(json!({
+        "version": "1.2.3",
+        "url": "https://updates.example.com/app.exe",
+        "signature": "c2ln",
+        "sha256": "abcd",
+        "target": "darwin-arm64"
+    }))
+    .expect("parse update info with target");
+    assert_eq!(parsed.target, "darwin-arm64");
+}
+
+#[test]
+fn parse_update_info_json_falls_back_to_current_target_when_target_missing() {
+    use volt_core::updater::current_target;
+
+    let parsed = parse_update_info_json(json!({
+        "version": "1.2.3",
+        "url": "https://updates.example.com/app.exe",
+        "signature": "c2ln",
+        "sha256": "abcd"
+    }))
+    .expect("parse update info without target");
+    assert_eq!(parsed.target, current_target());
+}
+
+#[test]
+fn parse_update_info_json_falls_back_to_current_target_when_target_empty() {
+    use volt_core::updater::current_target;
+
+    let parsed = parse_update_info_json(json!({
+        "version": "1.2.3",
+        "url": "https://updates.example.com/app.exe",
+        "signature": "c2ln",
+        "sha256": "abcd",
+        "target": ""
+    }))
+    .expect("parse update info with empty target");
+    assert_eq!(parsed.target, current_target());
+}
+
+#[test]
 fn embedded_update_public_key_is_reported_when_missing() {
     if EMBEDDED_UPDATE_PUBLIC_KEY.trim().is_empty() {
         assert!(embedded_update_public_key().is_err());

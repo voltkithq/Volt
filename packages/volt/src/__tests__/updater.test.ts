@@ -52,6 +52,7 @@ describe('autoUpdater', () => {
         url: 'https://updates.example.com/v2.0.0',
         signature: 'sig-base64',
         sha256: 'abc123',
+        target: 'windows-x64',
       });
       let receivedInfo: unknown = null;
       autoUpdater.on('update-available', (info: unknown) => {
@@ -61,6 +62,7 @@ describe('autoUpdater', () => {
       expect(result).not.toBeNull();
       expect(result!.version).toBe('2.0.0');
       expect(result!.url).toBe('https://updates.example.com/v2.0.0');
+      expect(result!.target).toBe('windows-x64');
       expect(receivedInfo).toEqual(result);
     });
 
@@ -98,12 +100,30 @@ describe('autoUpdater', () => {
         url: 'https://updates.example.com/v2.0.0',
         signature: 'sig-base64',
         sha256: 'abc123',
+        target: 'linux-x64',
       };
       let downloaded = false;
       autoUpdater.on('update-downloaded', () => { downloaded = true; });
       await autoUpdater.downloadUpdate(info);
       expect(downloaded).toBe(true);
       expect(updaterDownloadAndVerify).toHaveBeenCalled();
+    });
+
+    it('preserves target through check-then-download round-trip', async () => {
+      vi.mocked(updaterCheck).mockResolvedValueOnce({
+        version: '2.0.0',
+        url: 'https://updates.example.com/v2.0.0',
+        signature: 'sig-base64',
+        sha256: 'abc123',
+        target: 'darwin-arm64',
+      });
+
+      const info = await autoUpdater.checkForUpdates();
+      expect(info).not.toBeNull();
+      await autoUpdater.downloadUpdate(info!);
+
+      const nativeInfo = vi.mocked(updaterDownloadAndVerify).mock.calls[0]![1] as Record<string, unknown>;
+      expect(nativeInfo.target).toBe('darwin-arm64');
     });
 
     it('emits error and rethrows when download fails', async () => {
@@ -115,6 +135,7 @@ describe('autoUpdater', () => {
         url: 'https://x.com/v2',
         signature: 'bad',
         sha256: '000',
+        target: 'linux-x64',
       };
       let errorMsg = '';
       autoUpdater.on('error', (err: Error) => { errorMsg = err.message; });
@@ -138,6 +159,7 @@ describe('autoUpdater', () => {
         url: 'https://updates.example.com/v2.0.0',
         signature: 'sig-base64',
         sha256: 'abc123',
+        target: 'linux-x64',
       };
       await autoUpdater.downloadUpdate(info);
 

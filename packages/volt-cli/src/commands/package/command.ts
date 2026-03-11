@@ -221,8 +221,10 @@ export async function packageCommand(options: PackageOptions): Promise<void> {
   }
 
   if (missingTools.length > 0) {
-    const formatsRequested = format ? 1 : ALLOWED_PACKAGE_FORMATS[platform].length;
-    if (missingTools.length >= formatsRequested) {
+    // Default format counts match the packager defaults (not ALLOWED_PACKAGE_FORMATS):
+    // win32 → ['nsis'], darwin → ['app'], linux → ['appimage', 'deb']
+    const formatsAttempted = format ? 1 : platform === 'linux' ? 2 : 1;
+    if (missingTools.length >= formatsAttempted) {
       console.log('[volt] Packaging skipped: required tools not found. The built binary is available in dist-volt/.');
     } else {
       console.log(
