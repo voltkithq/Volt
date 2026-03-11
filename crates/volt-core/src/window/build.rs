@@ -19,11 +19,10 @@ pub fn create_window<T: 'static>(
         .with_maximized(config.maximized)
         .with_visible(config.visible);
 
-    if let Some(ref icon_data) = config.icon_rgba {
-        if let Ok(icon) = Icon::from_rgba(icon_data.clone(), config.icon_width, config.icon_height)
-        {
-            builder = builder.with_window_icon(Some(icon));
-        }
+    if let Some(ref icon_data) = config.icon_rgba
+        && let Ok(icon) = Icon::from_rgba(icon_data.clone(), config.icon_width, config.icon_height)
+    {
+        builder = builder.with_window_icon(Some(icon));
     }
 
     if let Some((min_w, min_h)) =
