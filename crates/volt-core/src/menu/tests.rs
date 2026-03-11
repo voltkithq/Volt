@@ -133,8 +133,10 @@ fn test_menu_error_operation_display() {
 
 #[test]
 fn test_build_menu_empty() {
-    let menu = build_menu(&[]);
-    assert!(menu.is_ok());
+    let result = build_menu(&[]);
+    assert!(result.is_ok());
+    let (_menu, id_map) = result.unwrap();
+    assert!(id_map.is_empty());
 }
 
 #[test]
@@ -148,8 +150,8 @@ fn test_build_menu_with_normal_item() {
         role: None,
         submenu: vec![],
     }];
-    let menu = build_menu(&items);
-    assert!(menu.is_ok());
+    let result = build_menu(&items);
+    assert!(result.is_ok());
 }
 
 #[test]
@@ -163,8 +165,8 @@ fn test_build_menu_with_separator() {
         role: None,
         submenu: vec![],
     }];
-    let menu = build_menu(&items);
-    assert!(menu.is_ok());
+    let result = build_menu(&items);
+    assert!(result.is_ok());
 }
 
 #[test]
@@ -178,8 +180,8 @@ fn test_build_menu_with_role_item() {
         role: Some("quit".to_string()),
         submenu: vec![],
     }];
-    let menu = build_menu(&items);
-    assert!(menu.is_ok());
+    let result = build_menu(&items);
+    assert!(result.is_ok());
 }
 
 #[test]
@@ -221,8 +223,8 @@ fn test_build_menu_with_submenu() {
             },
         ],
     }];
-    let menu = build_menu(&items);
-    assert!(menu.is_ok());
+    let result = build_menu(&items);
+    assert!(result.is_ok());
 }
 
 #[test]
@@ -238,20 +240,16 @@ fn test_build_menu_records_custom_id_mapping_for_dispatch() {
         submenu: vec![],
     }];
 
-    let menu = build_menu(&items);
-    assert!(menu.is_ok());
+    let result = build_menu(&items);
+    assert!(result.is_ok());
 
-    // Take a snapshot immediately after build_menu to avoid races with other
-    // tests that also call build_menu (which replaces the global map).
-    let mapping = super::build::menu_event_id_map_snapshot();
+    let (_menu, mapping) = result.unwrap();
     assert!(mapping.values().any(|mapped| mapped == &custom_id));
     let internal_id = mapping
         .iter()
         .find_map(|(internal, mapped)| (mapped == &custom_id).then(|| internal.clone()))
         .expect("custom id should be present in mapping");
 
-    // Verify via the snapshot (not the global resolve, which is racy under
-    // parallel test runners like tarpaulin).
     assert_eq!(
         mapping.get(&internal_id).map(|s| s.as_str()),
         Some("menu-custom-open")

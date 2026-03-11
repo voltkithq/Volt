@@ -1,11 +1,14 @@
+use std::collections::HashMap;
+
 use super::super::WindowStore;
 
 pub(super) fn apply_menu_to_windows(
     windows: &WindowStore,
     items: &[crate::menu::MenuItemConfig],
     app_menu: &mut Option<muda::Menu>,
+    menu_id_map: &mut HashMap<String, String>,
 ) -> Result<(), String> {
-    let menu =
+    let (menu, id_mapping) =
         crate::menu::build_menu(items).map_err(|e| format!("Failed to build app menu: {e}"))?;
 
     #[cfg(target_os = "windows")]
@@ -39,5 +42,6 @@ pub(super) fn apply_menu_to_windows(
     }
 
     *app_menu = Some(menu);
+    *menu_id_map = id_mapping;
     Ok(())
 }

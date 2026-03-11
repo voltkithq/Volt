@@ -17,6 +17,7 @@ fn test_handle_command_get_window_count_reports_store_size() {
     let mut tao_to_js = HashMap::new();
     let mut registered_hotkeys = HashMap::new();
     let mut app_menu = None;
+    let mut menu_id_map = HashMap::new();
     let mut tray_handle = None;
     let mut control_flow = ControlFlow::Wait;
     let mut observed = Vec::<app::AppEvent>::new();
@@ -32,6 +33,7 @@ fn test_handle_command_get_window_count_reports_store_size() {
             hotkey_manager: &hotkey_manager,
             registered_hotkeys: &mut registered_hotkeys,
             app_menu: &mut app_menu,
+            menu_id_map: &mut menu_id_map,
             tray_handle: &mut tray_handle,
             control_flow: &mut control_flow,
             on_event: &mut on_event,
@@ -59,6 +61,7 @@ fn test_handle_command_ipc_message_forwards_to_event_callback() {
     let mut tao_to_js = HashMap::new();
     let mut registered_hotkeys = HashMap::new();
     let mut app_menu = None;
+    let mut menu_id_map = HashMap::new();
     let mut tray_handle = None;
     let mut control_flow = ControlFlow::Wait;
     let mut observed = Vec::<app::AppEvent>::new();
@@ -73,6 +76,7 @@ fn test_handle_command_ipc_message_forwards_to_event_callback() {
             hotkey_manager: &hotkey_manager,
             registered_hotkeys: &mut registered_hotkeys,
             app_menu: &mut app_menu,
+            menu_id_map: &mut menu_id_map,
             tray_handle: &mut tray_handle,
             control_flow: &mut control_flow,
             on_event: &mut on_event,
@@ -109,6 +113,7 @@ fn test_handle_command_set_tray_tooltip_replies_error_without_tray() {
     let mut tao_to_js = HashMap::new();
     let mut registered_hotkeys = HashMap::new();
     let mut app_menu = None;
+    let mut menu_id_map = HashMap::new();
     let mut tray_handle = None;
     let mut control_flow = ControlFlow::Wait;
     let mut observed = Vec::<app::AppEvent>::new();
@@ -124,6 +129,7 @@ fn test_handle_command_set_tray_tooltip_replies_error_without_tray() {
             hotkey_manager: &hotkey_manager,
             registered_hotkeys: &mut registered_hotkeys,
             app_menu: &mut app_menu,
+            menu_id_map: &mut menu_id_map,
             tray_handle: &mut tray_handle,
             control_flow: &mut control_flow,
             on_event: &mut on_event,
@@ -154,6 +160,7 @@ fn test_handle_command_quit_clears_state_and_requests_shutdown() {
     let mut tao_to_js = HashMap::new();
     let mut registered_hotkeys = HashMap::new();
     let mut app_menu = None;
+    let mut menu_id_map = HashMap::new();
     let mut tray_handle = None;
     let mut control_flow = ControlFlow::Wait;
     let mut observed = Vec::<app::AppEvent>::new();
@@ -168,6 +175,7 @@ fn test_handle_command_quit_clears_state_and_requests_shutdown() {
             hotkey_manager: &hotkey_manager,
             registered_hotkeys: &mut registered_hotkeys,
             app_menu: &mut app_menu,
+            menu_id_map: &mut menu_id_map,
             tray_handle: &mut tray_handle,
             control_flow: &mut control_flow,
             on_event: &mut on_event,

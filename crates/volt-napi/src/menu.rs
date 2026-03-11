@@ -28,7 +28,7 @@ impl VoltMenu {
     pub fn set_as_app_menu(&self) -> napi::Result<()> {
         require_permission(Permission::Menu)?;
         // Validate template shape early for clearer JS-side errors.
-        menu::build_menu(&self.items)
+        let (_menu, _id_map) = menu::build_menu(&self.items)
             .map_err(|e| napi::Error::from_reason(format!("Failed to build menu: {e}")))?;
 
         send_query(|reply| AppCommand::SetAppMenu {
