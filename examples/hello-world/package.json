@@ -6,7 +6,9 @@
     "dev": "volt dev",
     "build": "volt build",
     "preview": "volt preview",
-    "lint": "eslint . --max-warnings 0"
+    "lint": "eslint . --max-warnings 0",
+    "package": "volt package",
+    "doctor": "volt doctor"
   },
   "dependencies": {
     "voltkit": "workspace:*",
