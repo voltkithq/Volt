@@ -118,12 +118,14 @@ export async function packageCommand(options: PackageOptions): Promise<void> {
     console.log('[volt] Code signing: enabled');
   }
 
+  let toolMissing = false;
+
   if (platform === 'win32') {
     const updaterHelperPath = resolve(distVoltDir, WINDOWS_UPDATER_HELPER_FILE_NAME);
     const updaterHelperFileName = existsSync(updaterHelperPath)
       ? WINDOWS_UPDATER_HELPER_FILE_NAME
       : null;
-    await packageWindows(
+    toolMissing = await packageWindows(
       appName,
       version,
       artifactVersion,
@@ -140,7 +142,7 @@ export async function packageCommand(options: PackageOptions): Promise<void> {
       signingResults,
     );
   } else if (platform === 'darwin') {
-    await packageMacOS(
+    toolMissing = await packageMacOS(
       appName,
       version,
       artifactVersion,
@@ -153,7 +155,7 @@ export async function packageCommand(options: PackageOptions): Promise<void> {
       signingResults,
     );
   } else {
-    await packageLinux(
+    toolMissing = await packageLinux(
       appName,
       version,
       artifactVersion,
@@ -218,7 +220,11 @@ export async function packageCommand(options: PackageOptions): Promise<void> {
     console.log(JSON.stringify(summary, null, 2));
   }
 
-  console.log(`[volt] Packaging complete. Output: ${packageDir}/`);
+  if (toolMissing) {
+    console.log('[volt] Packaging skipped: required tool not found. The built binary is available in dist-volt/.');
+  } else {
+    console.log(`[volt] Packaging complete. Output: ${packageDir}/`);
+  }
 }
 
 function resolveEnterpriseBundleDecision(config: PackageEnterpriseConfig | undefined): {
