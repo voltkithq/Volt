@@ -136,7 +136,8 @@ pub(crate) fn prepare_startup_recovery() -> Result<Option<HealthyStartupWindow>,
             remove_file_with_warning(&marker_path, "unsupported pending-update marker");
             tracing::warn!(
                 "pending-update marker schema mismatch (expected {}, got {}) — removed",
-                MARKER_SCHEMA_VERSION, marker.schema_version
+                MARKER_SCHEMA_VERSION,
+                marker.schema_version
             );
             return Ok(None);
         }
