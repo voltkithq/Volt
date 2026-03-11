@@ -2,10 +2,8 @@ use std::collections::HashMap;
 
 use super::super::AppEvent;
 
-pub(super) fn poll_native_runtime_events<F>(
-    on_event: &mut F,
-    menu_id_map: &HashMap<String, String>,
-) where
+pub(super) fn poll_native_runtime_events<F>(on_event: &mut F, menu_id_map: &HashMap<String, String>)
+where
     F: FnMut(&AppEvent),
 {
     if let Some(menu_event) = crate::menu::check_menu_event() {
