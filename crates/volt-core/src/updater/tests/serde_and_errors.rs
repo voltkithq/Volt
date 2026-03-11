@@ -20,6 +20,7 @@ fn test_update_info_serde() {
         url: "https://example.com/v2.0.0/app".to_string(),
         signature: "base64sig==".to_string(),
         sha256: "abcdef1234567890".to_string(),
+        target: "linux-x64".to_string(),
     };
     let json = serde_json::to_string(&info).unwrap();
     let restored: UpdateInfo = serde_json::from_str(&json).unwrap();

@@ -7,12 +7,13 @@ fn test_canonical_update_metadata_payload_is_stable() {
         url: "https://updates.example.com/app.exe".to_string(),
         signature: String::new(),
         sha256: "AB".repeat(32),
+        target: "linux-x64".to_string(),
     };
 
     let payload = super::super::verification::canonical_update_metadata_payload(&info);
     assert_eq!(
         payload,
-        b"volt-update-v1\x001.2.3\x00https://updates.example.com/app.exe\x00abababababababababababababababababababababababababababababababab".to_vec()
+        b"volt-update-v1\x001.2.3\x00https://updates.example.com/app.exe\x00abababababababababababababababababababababababababababababababab\x00linux-x64".to_vec()
     );
 }
 

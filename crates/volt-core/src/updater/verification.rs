@@ -54,7 +54,12 @@ pub(super) fn decode_public_key(key_b64: &str) -> Result<VerifyingKey, UpdateErr
 pub(super) fn canonical_update_metadata_payload(info: &UpdateInfo) -> Vec<u8> {
     let normalized_sha256 = info.sha256.trim().to_ascii_lowercase();
     let mut payload = Vec::with_capacity(
-        "volt-update-v1".len() + info.version.len() + info.url.len() + normalized_sha256.len() + 4,
+        "volt-update-v1".len()
+            + info.version.len()
+            + info.url.len()
+            + normalized_sha256.len()
+            + info.target.len()
+            + 5,
     );
     payload.extend_from_slice(b"volt-update-v1\0");
     payload.extend_from_slice(info.version.as_bytes());
@@ -62,6 +67,8 @@ pub(super) fn canonical_update_metadata_payload(info: &UpdateInfo) -> Vec<u8> {
     payload.extend_from_slice(info.url.as_bytes());
     payload.push(0);
     payload.extend_from_slice(normalized_sha256.as_bytes());
+    payload.push(0);
+    payload.extend_from_slice(info.target.as_bytes());
     payload
 }
 

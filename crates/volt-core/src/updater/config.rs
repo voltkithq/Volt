@@ -19,8 +19,11 @@ pub struct UpdateInfo {
     /// Download URL for the update binary.
     pub url: String,
     /// Ed25519 signature of the canonical update metadata payload
-    /// (`version`, `url`, `sha256`) encoded as base64.
+    /// (`version`, `url`, `sha256`, `target`) encoded as base64.
     pub signature: String,
     /// SHA-256 hash of the binary (hex-encoded).
     pub sha256: String,
+    /// Target platform/architecture (e.g. `x86_64-unknown-linux-gnu`).
+    #[serde(default)]
+    pub target: String,
 }

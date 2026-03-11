@@ -127,18 +127,18 @@ pub(crate) fn prepare_startup_recovery() -> Result<Option<HealthyStartupWindow>,
             Ok(value) => value,
             Err(error) => {
                 remove_file_with_warning(&marker_path, "invalid pending-update marker");
-                return Err(format!(
-                    "pending-update marker was invalid and has been removed: {error}"
-                ));
+                tracing::warn!("pending-update marker was invalid and has been removed: {error}");
+                return Ok(None);
             }
         };
 
         if marker.schema_version != MARKER_SCHEMA_VERSION {
             remove_file_with_warning(&marker_path, "unsupported pending-update marker");
-            return Err(format!(
-                "pending-update marker schema mismatch: expected {}, got {}",
+            tracing::warn!(
+                "pending-update marker schema mismatch (expected {}, got {}) — removed",
                 MARKER_SCHEMA_VERSION, marker.schema_version
-            ));
+            );
+            return Ok(None);
         }
 
         let marker_target_path = PathBuf::from(&marker.target_path);
@@ -146,11 +146,12 @@ pub(crate) fn prepare_startup_recovery() -> Result<Option<HealthyStartupWindow>,
             != windows::normalize_windows_path(&current_exe)?
         {
             remove_file_with_warning(&marker_path, "stale pending-update marker");
-            return Err(format!(
-                "pending-update marker target '{}' does not match current executable '{}'",
+            tracing::warn!(
+                "pending-update marker target '{}' does not match current executable '{}' — removed",
                 marker.target_path,
                 current_exe.display()
-            ));
+            );
+            return Ok(None);
         }
 
         if marker.startup_attempts > 0 {

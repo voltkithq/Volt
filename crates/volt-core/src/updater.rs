@@ -44,8 +44,9 @@ pub fn check_for_update(config: &UpdateConfig) -> Result<Option<UpdateInfo>, Upd
     let body =
         read_response_body_limited(response, UPDATE_CHECK_RESPONSE_MAX_BYTES, "update check")
             .map_err(UpdateError::CheckFailed)?;
-    let info: UpdateInfo = serde_json::from_slice(&body)
+    let mut info: UpdateInfo = serde_json::from_slice(&body)
         .map_err(|e| UpdateError::CheckFailed(format!("invalid response JSON: {e}")))?;
+    info.target = target.to_string();
 
     let offered = semver::Version::parse(&info.version)
         .map_err(|e| UpdateError::CheckFailed(format!("invalid offered version: {e}")))?;
