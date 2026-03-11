@@ -118,7 +118,7 @@ export async function packageCommand(options: PackageOptions): Promise<void> {
     console.log('[volt] Code signing: enabled');
   }
 
-  let toolMissing = false;
+  let toolMissing: boolean;
 
   if (platform === 'win32') {
     const updaterHelperPath = resolve(distVoltDir, WINDOWS_UPDATER_HELPER_FILE_NAME);
