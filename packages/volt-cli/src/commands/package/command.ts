@@ -118,14 +118,14 @@ export async function packageCommand(options: PackageOptions): Promise<void> {
     console.log('[volt] Code signing: enabled');
   }
 
-  let toolMissing: boolean;
+  let missingTools: string[];
 
   if (platform === 'win32') {
     const updaterHelperPath = resolve(distVoltDir, WINDOWS_UPDATER_HELPER_FILE_NAME);
     const updaterHelperFileName = existsSync(updaterHelperPath)
       ? WINDOWS_UPDATER_HELPER_FILE_NAME
       : null;
-    toolMissing = await packageWindows(
+    missingTools = await packageWindows(
       appName,
       version,
       artifactVersion,
@@ -142,7 +142,7 @@ export async function packageCommand(options: PackageOptions): Promise<void> {
       signingResults,
     );
   } else if (platform === 'darwin') {
-    toolMissing = await packageMacOS(
+    missingTools = await packageMacOS(
       appName,
       version,
       artifactVersion,
@@ -155,7 +155,7 @@ export async function packageCommand(options: PackageOptions): Promise<void> {
       signingResults,
     );
   } else {
-    toolMissing = await packageLinux(
+    missingTools = await packageLinux(
       appName,
       version,
       artifactVersion,
@@ -220,8 +220,15 @@ export async function packageCommand(options: PackageOptions): Promise<void> {
     console.log(JSON.stringify(summary, null, 2));
   }
 
-  if (toolMissing) {
-    console.log('[volt] Packaging skipped: required tool not found. The built binary is available in dist-volt/.');
+  if (missingTools.length > 0) {
+    const formatsRequested = format ? 1 : ALLOWED_PACKAGE_FORMATS[platform].length;
+    if (missingTools.length >= formatsRequested) {
+      console.log('[volt] Packaging skipped: required tools not found. The built binary is available in dist-volt/.');
+    } else {
+      console.log(
+        `[volt] Packaging partially complete. Some tools were not found: ${missingTools.join(', ')}. Output: ${packageDir}/`,
+      );
+    }
   } else {
     console.log(`[volt] Packaging complete. Output: ${packageDir}/`);
   }

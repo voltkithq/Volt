@@ -9,7 +9,7 @@ const UPDATE_HELPER_BINARY_NAME: &str = "volt-updater-helper.exe";
 const UPDATE_HELPER_WAIT_TIMEOUT_SECS: u64 = 600;
 
 /// Get the current platform target string.
-pub(super) fn current_target() -> &'static str {
+pub fn current_target() -> &'static str {
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     {
         "linux-x64"

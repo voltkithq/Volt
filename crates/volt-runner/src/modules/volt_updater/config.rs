@@ -1,6 +1,6 @@
 use serde_json::Value;
 use volt_core::permissions::Permission;
-use volt_core::updater::{self, UpdateConfig, UpdateInfo};
+use volt_core::updater::{self, UpdateConfig, UpdateInfo, current_target};
 
 use super::super::require_permission;
 
@@ -81,7 +81,8 @@ pub(crate) fn parse_update_info_json(value: Value) -> Result<UpdateInfo, String>
         target: object
             .get("target")
             .and_then(Value::as_str)
-            .unwrap_or_default()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| current_target())
             .to_string(),
     })
 }

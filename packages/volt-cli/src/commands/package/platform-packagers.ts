@@ -35,9 +35,9 @@ export async function packageWindows(
   signing?: import('../../utils/signing.js').ResolvedWindowsConfig,
   updaterHelperFileName?: string | null,
   signingResults: SigningArtifactResult[] = [],
-): Promise<boolean> {
+): Promise<string[]> {
   const formats = format ? [format] : ['nsis'];
-  let toolMissing = false;
+  const missingTools: string[] = [];
 
   if (signing) {
     signingResults.push(await signWindows(runtimeArtifact.absolutePath, signing));
@@ -78,7 +78,7 @@ export async function packageWindows(
         },
         '[volt] Failed to create Windows NSIS installer.',
       )) {
-        toolMissing = true;
+        missingTools.push('makensis');
       }
 
       const installerPath = resolve(outDir, `${binaryName}-${artifactVersion}-setup.exe`);
@@ -141,7 +141,7 @@ export async function packageWindows(
         },
         '[volt] Failed to create Windows MSIX package.',
       )) {
-        toolMissing = true;
+        missingTools.push('makemsix/makeappx');
       }
 
       if (existsSync(msixPath)) {
@@ -153,7 +153,7 @@ export async function packageWindows(
     }
   }
 
-  return toolMissing;
+  return missingTools;
 }
 
 export async function packageMacOS(
@@ -167,9 +167,9 @@ export async function packageMacOS(
   format?: string,
   signing?: import('../../utils/signing.js').ResolvedMacOSConfig,
   signingResults: SigningArtifactResult[] = [],
-): Promise<boolean> {
+): Promise<string[]> {
   const formats = format ? [format] : ['app'];
-  let toolMissing = false;
+  const missingTools: string[] = [];
 
   for (const fmt of formats) {
     if (fmt === 'app' || fmt === 'dmg') {
@@ -211,7 +211,7 @@ export async function packageMacOS(
           },
           '[volt] Failed to create DMG package.',
         )) {
-          toolMissing = true;
+          missingTools.push('hdiutil');
         }
         if (existsSync(dmgPath)) {
           console.log(`[volt] DMG created: ${dmgPath}`);
@@ -220,7 +220,7 @@ export async function packageMacOS(
     }
   }
 
-  return toolMissing;
+  return missingTools;
 }
 
 export async function packageLinux(
@@ -233,9 +233,9 @@ export async function packageLinux(
   runtimeArtifact: RuntimeArtifactDescriptor,
   format?: string,
   packageTarget?: string,
-): Promise<boolean> {
+): Promise<string[]> {
   const formats = format ? [format] : ['appimage', 'deb'];
-  let toolMissing = false;
+  const missingTools: string[] = [];
   const debControlVersion = normalizeDebianControlVersion(version);
   if (debControlVersion !== version) {
     console.warn(
@@ -272,7 +272,7 @@ export async function packageLinux(
         },
         '[volt] Failed to create AppImage package.',
       )) {
-        toolMissing = true;
+        missingTools.push('appimagetool');
       }
       if (existsSync(outputPath)) {
         console.log(`[volt] AppImage created: ${outputPath}`);
@@ -321,7 +321,7 @@ export async function packageLinux(
         },
         '[volt] Failed to create deb package.',
       )) {
-        toolMissing = true;
+        missingTools.push('dpkg-deb');
       }
       if (existsSync(debPath)) {
         console.log(`[volt] Deb package created: ${debPath}`);
@@ -329,7 +329,7 @@ export async function packageLinux(
     }
   }
 
-  return toolMissing;
+  return missingTools;
 }
 
 interface MsixAssetPaths {

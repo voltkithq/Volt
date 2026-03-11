@@ -52,6 +52,8 @@ export interface UpdateInfo {
   signature: string;
   /** SHA-256 hash (hex). */
   sha256: string;
+  /** Target platform/architecture (e.g. `x86_64-unknown-linux-gnu`). */
+  target: string;
 }
 
 /** Build the native UpdateConfig from the app configuration. */
@@ -92,6 +94,7 @@ class AutoUpdater extends EventEmitter {
           url: result.url,
           signature: result.signature,
           sha256: result.sha256,
+          target: result.target,
         };
         this.emit('update-available', info);
         return info;
@@ -118,6 +121,7 @@ class AutoUpdater extends EventEmitter {
         url: info.url,
         signature: info.signature,
         sha256: info.sha256,
+        target: info.target,
       };
 
       const data = await updaterDownloadAndVerify(nativeConfig, nativeInfo);
