@@ -331,7 +331,9 @@ fn run_sync_storm_benchmark(config: &SyncStormConfig) -> Result<SyncStormMetrics
             .get("lastSummary")
             .and_then(|value| if value.is_null() { None } else { Some(value) });
 
-        if active_scenario.is_none() && let Some(summary) = last_summary {
+        if active_scenario.is_none()
+            && let Some(summary) = last_summary
+        {
             let summary_id = json_string(summary, "scenarioId")?;
             if summary_id == scenario_id {
                 return Ok(SyncStormMetrics {
@@ -408,7 +410,9 @@ fn load_benchmark_profile() -> Result<BenchmarkProfile, String> {
         if let Some(iterations) = analytics.iterations {
             profile.analytics_studio.iterations = iterations.max(1);
         }
-        if let Some(search_term) = analytics.search_term && !search_term.is_empty() {
+        if let Some(search_term) = analytics.search_term
+            && !search_term.is_empty()
+        {
             profile.analytics_studio.search_term = search_term;
         }
         if let Some(min_score) = analytics.min_score {
@@ -502,10 +506,15 @@ fn json_u64(value: &JsonValue, key: &str) -> Result<u64, String> {
     if let Some(number) = entry.as_u64() {
         return Ok(number);
     }
-    if let Some(number) = entry.as_i64() && number >= 0 {
+    if let Some(number) = entry.as_i64()
+        && number >= 0
+    {
         return Ok(number as u64);
     }
-    if let Some(number) = entry.as_f64() && number.is_finite() && number >= 0.0 {
+    if let Some(number) = entry.as_f64()
+        && number.is_finite()
+        && number >= 0.0
+    {
         return Ok(number.round() as u64);
     }
     Err(format!("field {key} is not a non-negative number"))
