@@ -28,6 +28,9 @@ export {
 export {
   createHelloWorldSmokeSuite,
   createIpcDemoSmokeSuite,
+  createAnalyticsStudioBenchmarkSuite,
+  createSyncStormBenchmarkSuite,
+  createWorkflowLabBenchmarkSuite,
 } from './suites/index.js';
 export type {
   AutomationEvent,
@@ -45,4 +48,10 @@ export type {
   HelloWorldSmokeSuiteOptions,
   IpcDemoSmokePayload,
   IpcDemoSmokeSuiteOptions,
+  AnalyticsStudioBenchmarkPayload,
+  AnalyticsStudioBenchmarkSuiteOptions,
+  SyncStormBenchmarkPayload,
+  SyncStormBenchmarkSuiteOptions,
+  WorkflowLabBenchmarkPayload,
+  WorkflowLabBenchmarkSuiteOptions,
 } from './suites/index.js';

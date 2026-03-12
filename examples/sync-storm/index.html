@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Volt Sync Storm</title>
+  <style>
+    :root {
+      --bg: #f5f1e8;
+      --ink: #172033;
+      --muted: #5a6478;
+      --surface: rgba(255, 255, 255, 0.9);
+      --line: rgba(23, 32, 51, 0.14);
+      --accent: #b34724;
+      --accent-dark: #7f2f17;
+      --shadow: 0 20px 50px rgba(23, 32, 51, 0.11);
+      font-family: "Segoe UI", "Avenir Next", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(255, 201, 138, 0.35), transparent 26%),
+        radial-gradient(circle at top right, rgba(179, 71, 36, 0.12), transparent 26%),
+        linear-gradient(180deg, #fef8f0 0%, var(--bg) 100%);
+    }
+
+    main {
+      max-width: 1360px;
+      margin: 0 auto;
+      padding: 26px;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 1.25fr 0.95fr;
+      gap: 18px;
+      margin-bottom: 18px;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      box-shadow: var(--shadow);
+      padding: 20px;
+      backdrop-filter: blur(10px);
+    }
+
+    h1, h2, p { margin: 0; }
+    h1 { font-size: 38px; margin-bottom: 10px; }
+    h2 { font-size: 18px; margin-bottom: 12px; }
+    p { color: var(--muted); line-height: 1.5; }
+
+    .eyebrow {
+      display: inline-block;
+      margin-bottom: 14px;
+      padding: 7px 12px;
+      border-radius: 999px;
+      background: rgba(179, 71, 36, 0.12);
+      color: var(--accent-dark);
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 18px;
+    }
+
+    label {
+      display: grid;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--muted);
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    input {
+      width: 100%;
+      border: 1px solid rgba(23, 32, 51, 0.18);
+      border-radius: 14px;
+      padding: 11px 12px;
+      font-size: 14px;
+      color: var(--ink);
+      background: white;
+    }
+
+    button {
+      border: none;
+      border-radius: 16px;
+      padding: 13px 18px;
+      font-size: 14px;
+      font-weight: 700;
+      color: white;
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%);
+      cursor: pointer;
+      align-self: end;
+      box-shadow: 0 14px 32px rgba(179, 71, 36, 0.22);
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 18px;
+    }
+
+    .metric {
+      background: rgba(255, 255, 255, 0.82);
+      border: 1px solid rgba(23, 32, 51, 0.08);
+      border-radius: 18px;
+      padding: 14px;
+    }
+
+    .metric span {
+      display: block;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .metric strong {
+      display: block;
+      font-size: 24px;
+      letter-spacing: -0.03em;
+    }
+
+    .panels {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+    }
+
+    pre {
+      margin: 0;
+      min-height: 290px;
+      border-radius: 18px;
+      padding: 16px;
+      background: #1d2330;
+      color: #f5ede3;
+      overflow: auto;
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .status {
+      margin-top: 14px;
+      color: var(--accent-dark);
+      font-weight: 700;
+      font-size: 14px;
+    }
+
+    @media (max-width: 1080px) {
+      .layout,
+      .panels {
+        grid-template-columns: 1fr;
+      }
+
+      .controls {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .metrics {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="layout">
+      <article class="card">
+        <div class="eyebrow">Boa Stress Test 2</div>
+        <h1>Sync Storm</h1>
+        <p>
+          This benchmark is not about hot loops. It is about orchestration pressure: a cluster of timer-driven workers
+          emits bursts of state updates, the backend keeps coordinator state in sync, and the renderer measures how much
+          of the flood actually arrives on time.
+        </p>
+        <div class="controls">
+          <label>
+            Workers
+            <input id="worker-count" type="number" min="1" max="32" step="1" value="10">
+          </label>
+          <label>
+            Ticks / Worker
+            <input id="ticks-per-worker" type="number" min="4" max="120" step="1" value="36">
+          </label>
+          <label>
+            Interval (ms)
+            <input id="interval-ms" type="number" min="1" max="50" step="1" value="6">
+          </label>
+          <label>
+            Burst Size
+            <input id="burst-size" type="number" min="2" max="24" step="1" value="6">
+          </label>
+          <button id="run-sync-benchmark" type="button">Run Sync Storm</button>
+        </div>
+        <div class="status" id="status-line">Waiting for scenario start.</div>
+      </article>
+
+      <aside class="card">
+        <h2>Why It Matters</h2>
+        <p>
+          If main-process TypeScript is meant to own background sync, queue coordination, plugin hooks, or window
+          routing, this kind of bursty timer and event traffic is the real question. A framework can survive slower JS
+          compute if it still handles orchestration cleanly.
+        </p>
+        <div class="metrics">
+          <div class="metric">
+            <span>Events Seen</span>
+            <strong id="metric-events">0</strong>
+          </div>
+          <div class="metric">
+            <span>Snapshots</span>
+            <strong id="metric-snapshots">0</strong>
+          </div>
+          <div class="metric">
+            <span>Average Lag</span>
+            <strong id="metric-lag">0 ms</strong>
+          </div>
+          <div class="metric">
+            <span>Max Drift</span>
+            <strong id="metric-drift">0 ms</strong>
+          </div>
+        </div>
+      </aside>
+    </section>
+
+    <section class="panels">
+      <article class="card">
+        <h2>Live Event Trace</h2>
+        <pre id="event-output">Event bursts will appear here.</pre>
+      </article>
+
+      <article class="card">
+        <h2>Latest Summary</h2>
+        <pre id="summary-output">Run the storm to inspect summary metrics.</pre>
+      </article>
+    </section>
+  </main>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
