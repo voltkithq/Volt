@@ -42,6 +42,19 @@ importers:
         specifier: ^3.4.0
         version: 3.5.1(@emnapi/runtime@1.8.1)(@types/node@25.2.3)
 
+  examples/analytics-studio:
+    dependencies:
+      '@voltkit/volt-cli':
+        specifier: workspace:*
+        version: link:../../packages/volt-cli
+      voltkit:
+        specifier: workspace:*
+        version: link:../../packages/volt
+    devDependencies:
+      vite:
+        specifier: ^7.3.1
+        version: 7.3.1(@types/node@25.2.3)(jiti@2.6.1)
+
   examples/hello-world:
     dependencies:
       '@voltkit/volt-cli':
@@ -71,6 +84,19 @@ importers:
         specifier: ^4.0.18
         version: 4.0.18(@types/node@25.2.3)(jiti@2.6.1)
 
+  examples/sync-storm:
+    dependencies:
+      '@voltkit/volt-cli':
+        specifier: workspace:*
+        version: link:../../packages/volt-cli
+      voltkit:
+        specifier: workspace:*
+        version: link:../../packages/volt
+    devDependencies:
+      vite:
+        specifier: ^7.3.1
+        version: 7.3.1(@types/node@25.2.3)(jiti@2.6.1)
+
   examples/todo-app:
     dependencies:
       '@voltkit/volt-cli':
@@ -86,6 +112,19 @@ importers:
       vitest:
         specifier: ^4.0.18
         version: 4.0.18(@types/node@25.2.3)(jiti@2.6.1)
+
+  examples/workflow-lab:
+    dependencies:
+      '@voltkit/volt-cli':
+        specifier: workspace:*
+        version: link:../../packages/volt-cli
+      voltkit:
+        specifier: workspace:*
+        version: link:../../packages/volt
+    devDependencies:
+      vite:
+        specifier: ^7.3.1
+        version: 7.3.1(@types/node@25.2.3)(jiti@2.6.1)
 
   packages/create-volt:
     dependencies:

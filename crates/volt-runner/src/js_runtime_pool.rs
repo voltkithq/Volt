@@ -2,6 +2,8 @@ use std::sync::{Arc, Mutex};
 
 use crate::js_runtime::{JsRuntimeClient, JsRuntimeManager, JsRuntimeOptions};
 
+#[cfg(test)]
+mod benchmark_tests;
 mod client;
 mod rate_limiter;
 #[cfg(test)]

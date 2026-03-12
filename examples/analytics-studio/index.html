@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Volt Analytics Studio</title>
+  <style>
+    :root {
+      --ink: #11243a;
+      --muted: #4d647d;
+      --line: rgba(17, 36, 58, 0.14);
+      --surface: rgba(255, 255, 255, 0.9);
+      --accent: #0b7285;
+      --accent-strong: #09536d;
+      --shadow: 0 22px 60px rgba(17, 36, 58, 0.12);
+      font-family: "Segoe UI", "Avenir Next", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(151, 215, 0, 0.15), transparent 28%),
+        radial-gradient(circle at top right, rgba(11, 114, 133, 0.14), transparent 32%),
+        linear-gradient(180deg, #eef8f7 0%, #f7f8fb 58%, #ffffff 100%);
+    }
+
+    main {
+      max-width: 1380px;
+      margin: 0 auto;
+      padding: 28px;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: 1.3fr 0.9fr;
+      gap: 18px;
+      margin-bottom: 18px;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      box-shadow: var(--shadow);
+      padding: 20px;
+      backdrop-filter: blur(10px);
+    }
+
+    h1, h2, h3, p { margin: 0; }
+    h1 { font-size: 38px; margin-bottom: 10px; }
+    h2 { font-size: 18px; margin-bottom: 12px; }
+    p { color: var(--muted); line-height: 1.5; }
+
+    .hero-note {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(11, 114, 133, 0.1);
+      color: var(--accent-strong);
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 14px;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 18px;
+    }
+
+    label {
+      display: grid;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--muted);
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    input {
+      width: 100%;
+      border: 1px solid rgba(17, 36, 58, 0.18);
+      border-radius: 14px;
+      padding: 11px 12px;
+      font-size: 14px;
+      color: var(--ink);
+      background: white;
+    }
+
+    button {
+      border: none;
+      border-radius: 16px;
+      padding: 13px 18px;
+      font-size: 14px;
+      font-weight: 700;
+      color: white;
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
+      cursor: pointer;
+      align-self: end;
+      transition: transform 140ms ease, box-shadow 140ms ease;
+      box-shadow: 0 16px 30px rgba(11, 114, 133, 0.22);
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 18px;
+    }
+
+    .metric {
+      border-radius: 18px;
+      padding: 14px;
+      background: rgba(255, 255, 255, 0.82);
+      border: 1px solid rgba(17, 36, 58, 0.08);
+    }
+
+    .metric span {
+      display: block;
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 8px;
+    }
+
+    .metric strong {
+      display: block;
+      font-size: 24px;
+      letter-spacing: -0.03em;
+    }
+
+    .panel-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+    }
+
+    pre {
+      margin: 0;
+      min-height: 300px;
+      border-radius: 18px;
+      padding: 16px;
+      background: #102132;
+      color: #daf0f2;
+      overflow: auto;
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .status {
+      margin-top: 14px;
+      font-size: 14px;
+      color: var(--accent-strong);
+      font-weight: 700;
+    }
+
+    @media (max-width: 1100px) {
+      .hero,
+      .panel-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .controls {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .metrics {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="hero">
+      <article class="card">
+        <div class="hero-note">Boa Stress Test 1</div>
+        <h1>Analytics Studio</h1>
+        <p>
+          This app keeps the data pipeline in main-process TypeScript on purpose. It generates a large synthetic
+          portfolio, then filters, sorts, groups, and summarizes it repeatedly so Volt can show where pure JS hot loops
+          begin to drag.
+        </p>
+        <div class="controls">
+          <label>
+            Dataset Size
+            <input id="dataset-size" type="number" min="1000" step="1000" value="36000">
+          </label>
+          <label>
+            Iterations
+            <input id="iterations" type="number" min="1" step="1" value="6">
+          </label>
+          <label>
+            Search Term
+            <input id="search-term" type="text" value="risk">
+          </label>
+          <label>
+            Min Score
+            <input id="min-score" type="number" min="0" max="100" step="1" value="58">
+          </label>
+          <label>
+            Top N
+            <input id="top-n" type="number" min="5" max="100" step="1" value="18">
+          </label>
+          <button id="run-benchmark" type="button">Run Analytics Benchmark</button>
+        </div>
+        <div class="status" id="status-line">Loading dataset profile...</div>
+      </article>
+
+      <aside class="card">
+        <h2>What It Stresses</h2>
+        <p>
+          The backend is intentionally doing CPU-bound work in JS: repeated scans, string matching, score weighting,
+          sorting, and bucket aggregation. This is the kind of path that should tell you quickly whether Boa is viable
+          for real analytical workloads or only for orchestration.
+        </p>
+        <div class="metrics">
+          <div class="metric">
+            <span>Rows Cached</span>
+            <strong id="metric-rows">0</strong>
+          </div>
+          <div class="metric">
+            <span>Backend Time</span>
+            <strong id="metric-backend">0 ms</strong>
+          </div>
+          <div class="metric">
+            <span>Round Trip</span>
+            <strong id="metric-roundtrip">0 ms</strong>
+          </div>
+          <div class="metric">
+            <span>Peak Matches</span>
+            <strong id="metric-matches">0</strong>
+          </div>
+        </div>
+      </aside>
+    </section>
+
+    <section class="panel-grid">
+      <article class="card">
+        <h2>Dataset Profile</h2>
+        <pre id="profile-output">Loading profile...</pre>
+      </article>
+
+      <article class="card">
+        <h2>Latest Benchmark Result</h2>
+        <pre id="result-output">Run the benchmark to inspect timing data.</pre>
+      </article>
+    </section>
+  </main>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
