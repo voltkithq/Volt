@@ -492,17 +492,17 @@ jobs:
     name: E2E Smoke (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
-    # GUI smoke tests are unreliable on headless GitHub-hosted runners (Windows/macOS)
-    # because the native window may not initialize without a display session.
-    # Linux uses xvfb-run to provide a virtual display.
-    continue-on-error: ${{ matrix.os == 'windows-latest' || matrix.os == 'macos-latest' }}
+    # Windows smoke is disabled here because the native window does not reliably
+    # initialize on GitHub-hosted runners. Linux uses xvfb-run to provide a
+    # virtual display, and macOS remains best-effort only.
+    continue-on-error: ${{ matrix.os == 'macos-latest' }}
     env:
       SCCACHE_GHA_ENABLED: "true"
       RUSTC_WRAPPER: "sccache"
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v6
 
