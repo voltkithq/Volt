@@ -29,6 +29,7 @@ const VOLT_RUNTIME_MODULE_TO_STEM: Record<string, string> = {
   'volt:shell': 'volt-shell',
   'volt:notification': 'volt-notification',
   'volt:http': 'volt-http',
+  'volt:bench': 'volt-bench',
   'volt:updater': 'volt-updater',
 };
 

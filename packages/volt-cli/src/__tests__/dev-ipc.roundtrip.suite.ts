@@ -63,6 +63,51 @@ describe('dev IPC round-trip: routing and errors', () => {
     });
   });
 
+  it('routes reserved native fast-path channels without an ipcMain handler', async () => {
+    const native = createNativeRuntimeMock();
+
+    await __testOnly.handleIpcMessageEvent(
+      native,
+      {
+        type: 'ipc-message',
+        windowId: 'window-native-fast-path',
+        raw: {
+          id: 'req-native-fast-path',
+          method: 'volt:native:data.query',
+          args: { datasetSize: 1_200, iterations: 2, searchTerm: 'risk' },
+        },
+      },
+      { timeoutMs: 200 },
+    );
+
+    expect(native.windowEvalScript).toHaveBeenCalledTimes(1);
+    const response = parseResponseScript(native.windowEvalScript.mock.calls[0][1]);
+    expect(response.id).toBe('req-native-fast-path');
+    expect(response.error).toBeUndefined();
+    expect(response.result.datasetSize).toBe(1200);
+    expect(response.result.iterations).toBe(2);
+  });
+
+  it('rejects prototype-pollution payloads before the dev fast path runs', async () => {
+    const native = createNativeRuntimeMock();
+
+    await __testOnly.handleIpcMessageEvent(
+      native,
+      {
+        type: 'ipc-message',
+        windowId: 'window-native-prototype',
+        raw: '{"id":"req-native-prototype","method":"volt:native:data.profile","args":{"__proto__":{"polluted":true}}}',
+      },
+      { timeoutMs: 200 },
+    );
+
+    expect(native.windowEvalScript).toHaveBeenCalledTimes(1);
+    const response = parseResponseScript(native.windowEvalScript.mock.calls[0][1]);
+    expect(response.id).toBe('req-native-prototype');
+    expect(response.errorCode).toBe('IPC_HANDLER_ERROR');
+    expect(response.error).toContain('Invalid IPC request payload');
+  });
+
   it('escapes </script> sequences in IPC response scripts', () => {
     const script = __testOnly.createIpcResponseScript({
       id: 'req-script',

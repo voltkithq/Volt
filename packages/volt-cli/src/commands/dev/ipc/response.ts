@@ -46,5 +46,18 @@ export function extractRequestId(raw: unknown): string {
       return maybeId;
     }
   }
+  if (typeof raw === 'string' && raw.trim().length > 0) {
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (parsed && typeof parsed === 'object') {
+        const maybeId = (parsed as Record<string, unknown>).id;
+        if (typeof maybeId === 'string' && maybeId.length > 0) {
+          return maybeId;
+        }
+      }
+    } catch {
+      // ignore invalid JSON and keep the stable unknown fallback
+    }
+  }
   return 'unknown';
 }

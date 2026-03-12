@@ -187,3 +187,13 @@ try {
 - Per-window in-flight IPC load is capped; overflow is rejected with `IPC_IN_FLIGHT_LIMIT`
 - Response payloads are escaped before injection into the WebView
 - Timeout failures return `errorCode: "IPC_HANDLER_TIMEOUT"` with `errorDetails`
+- Reserved `volt:native:*` channels used by built-in fast-path APIs still pass through the same payload, prototype-pollution, and rate-limit guards
+
+## Reserved Channels
+
+Volt reserves channel prefixes for framework-owned behavior:
+
+- `volt:*`
+- `volt:native:*`
+
+Application code should not register handlers for those channels. Use the exported framework APIs (`data`, `workflow`, backend runtime modules, etc.) instead of invoking reserved channel names directly.

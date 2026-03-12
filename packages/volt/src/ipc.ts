@@ -6,6 +6,7 @@
 type IpcHandler = (args: unknown) => Promise<unknown> | unknown;
 
 const handlers = new Map<string, IpcHandler>();
+const RESERVED_IPC_PREFIX = 'volt:';
 
 export type IpcErrorCode =
   | 'IPC_HANDLER_NOT_FOUND'
@@ -45,6 +46,7 @@ export const ipcMain = {
    * ```
    */
   handle(channel: string, handler: IpcHandler): void {
+    assertNonReservedChannel(channel);
     if (handlers.has(channel)) {
       throw new Error(`IPC handler already registered for channel: ${channel}`);
     }
@@ -209,6 +211,15 @@ function normalizeTimeout(timeoutMs?: number): number {
     return DEFAULT_HANDLER_TIMEOUT_MS;
   }
   return timeoutMs;
+}
+
+function assertNonReservedChannel(channel: string): void {
+  if (typeof channel !== 'string') {
+    throw new Error('IPC handler channel must be a string');
+  }
+  if (channel.trim().startsWith(RESERVED_IPC_PREFIX)) {
+    throw new Error(`IPC channel is reserved by Volt: ${channel.trim()}`);
+  }
 }
 
 function isTimeoutError(err: unknown): boolean {

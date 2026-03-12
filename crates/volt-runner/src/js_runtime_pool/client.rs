@@ -46,12 +46,19 @@ impl JsRuntimePoolClient {
             .dispatch_native_event(event_type, payload)
     }
 
-    fn check_ipc_rate_limit(&self) -> Result<(), String> {
+    pub(crate) fn check_ipc_rate_limit(&self) -> Result<(), String> {
         let mut limiter = self
             .ipc_rate_limiter
             .lock()
             .map_err(|_| "IPC rate limiter state is unavailable".to_string())?;
         limiter.check_rate_limit()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn fill_ipc_rate_limit_for_tests(&self) {
+        if let Ok(mut limiter) = self.ipc_rate_limiter.lock() {
+            limiter.fill_to_limit();
+        }
     }
 }
 

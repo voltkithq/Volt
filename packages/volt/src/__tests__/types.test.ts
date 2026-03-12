@@ -53,6 +53,9 @@ describe('defineConfig', () => {
       _dialogShowMessage: typeof import('volt:dialog').showMessage,
       _fsReadFile: typeof import('volt:fs').readFile,
       _httpFetch: typeof import('volt:http').fetch,
+      _benchAnalyticsProfile: typeof import('volt:bench').analyticsProfile,
+      _benchRunAnalyticsBenchmark: typeof import('volt:bench').runAnalyticsBenchmark,
+      _benchRunWorkflowBenchmark: typeof import('volt:bench').runWorkflowBenchmark,
       _updaterCheckForUpdate: typeof import('volt:updater').checkForUpdate,
     ): void => {
       void _ipc;
@@ -71,7 +74,34 @@ describe('defineConfig', () => {
       void _dialogShowMessage;
       void _fsReadFile;
       void _httpFetch;
+      void _benchAnalyticsProfile;
+      void _benchRunAnalyticsBenchmark;
+      void _benchRunWorkflowBenchmark;
       void _updaterCheckForUpdate;
+    };
+
+    const assertBenchResponseShape = async (
+      profileFn: typeof import('volt:bench').analyticsProfile,
+      analyticsFn: typeof import('volt:bench').runAnalyticsBenchmark,
+      workflowFn: typeof import('volt:bench').runWorkflowBenchmark,
+    ): Promise<void> => {
+      const profile = await profileFn({ datasetSize: 1_200 });
+      const analytics = await analyticsFn({ datasetSize: 2_400, iterations: 2, searchTerm: 'risk' });
+      const workflow = await workflowFn({ batchSize: 750, passes: 2, pipeline: ['normalizeText', 'buildDigests'] });
+
+      const _cachedSizes: number[] = profile.cachedSizes;
+      const _profileSpread: Record<string, number> = profile.categorySpread;
+      const _analyticsWinner: string = analytics.categoryWinners[0]?.category ?? '';
+      const _analyticsSampleTitle: string = analytics.sample[0]?.title ?? '';
+      const _workflowStepDuration: number = workflow.stepTimings[0]?.durationMs ?? 0;
+      const _workflowDigest: string = workflow.digestSample[0] ?? '';
+
+      void _cachedSizes;
+      void _profileSpread;
+      void _analyticsWinner;
+      void _analyticsSampleTitle;
+      void _workflowStepDuration;
+      void _workflowDigest;
     };
 
     const assertHttpResponseShape = async (
@@ -87,6 +117,7 @@ describe('defineConfig', () => {
     };
 
     expect(typeof acceptTypes).toBe('function');
+    expect(typeof assertBenchResponseShape).toBe('function');
     expect(typeof assertHttpResponseShape).toBe('function');
   });
 });

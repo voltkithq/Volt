@@ -34,6 +34,8 @@ export { clipboard } from './clipboard.js';
 export { Notification } from './notification.js';
 export { fs } from './fs.js';
 export { shell } from './shell.js';
+export { data } from './data.js';
+export { workflow } from './workflow.js';
 export { globalShortcut } from './globalShortcut.js';
 export { autoUpdater } from './updater.js';
 export { defineConfig } from './types.js';
@@ -66,4 +68,6 @@ export type {
 export type { ClipboardImage } from './clipboard.js';
 export type { NotificationOptions } from './notification.js';
 export type { FileInfo } from './fs.js';
+export type { DataProfile, DataProfileOptions, DataQueryOptions, DataQueryResult } from './data.js';
 export type { UpdateInfo } from './updater.js';
+export type { WorkflowPluginInfo, WorkflowRunOptions, WorkflowRunResult } from './workflow.js';

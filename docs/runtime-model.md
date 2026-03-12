@@ -80,6 +80,8 @@ structurally consistent after create/close/quit transitions.
 - Timeout/error classification is currently enforced in the Node-side IPC pipeline;
   native handler execution is synchronous.
 - IPC abuse bounds are enforced in bridge/runtime layers (payload size and in-flight caps).
+- Reserved `volt:native:*` channels can be resolved in the bridge/runtime layers before Boa
+  handler dispatch; payload bounds, prototype-pollution checks, and rate limiting still apply.
 - `volt-cli dev` supports an out-of-process native host bridge mode as an explicit opt-in (`VOLT_NATIVE_HOST=1`).
 
 ## Observability Hooks
