@@ -143,6 +143,28 @@ const result = await invoke('get-data', { query: 'search' });
 console.log(result.items); // ['a', 'b', 'c']
 ```
 
+Use raw `invoke()` for app-defined channels. For built-in high-volume helpers, prefer Volt's renderer APIs:
+
+```ts
+import { data, workflow } from 'voltkit/renderer';
+
+const profile = await data.profile({ datasetSize: 10_000 });
+const query = await data.query({
+  datasetSize: 10_000,
+  iterations: 4,
+  searchTerm: 'risk',
+});
+
+const plugins = await workflow.listPlugins();
+const result = await workflow.run({
+  batchSize: 3_000,
+  passes: 3,
+  pipeline: plugins.map((plugin) => plugin.name),
+});
+```
+
+This keeps renderer code in TypeScript while routing the expensive data and workflow loops through Volt's native runtime path.
+
 ## Next Steps
 
 - [CLI Reference](cli.md) - All CLI commands and options

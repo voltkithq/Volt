@@ -189,12 +189,11 @@
   <main>
     <section class="hero">
       <article class="card">
-        <div class="hero-note">Boa Stress Test 1</div>
+        <div class="hero-note">Native Data API Demo</div>
         <h1>Analytics Studio</h1>
         <p>
-          This app keeps the data pipeline in main-process TypeScript on purpose. It generates a large synthetic
-          portfolio, then filters, sorts, groups, and summarizes it repeatedly so Volt can show where pure JS hot loops
-          begin to drag.
+          This app uses Volt's public <code>data</code> API from the renderer. It profiles a synthetic portfolio,
+          ships the heavy query work to the runtime's native data path, and keeps the UI layer in plain TypeScript.
         </p>
         <div class="controls">
           <label>
@@ -217,7 +216,7 @@
             Top N
             <input id="top-n" type="number" min="5" max="100" step="1" value="18">
           </label>
-          <button id="run-benchmark" type="button">Run Analytics Benchmark</button>
+          <button id="run-benchmark" type="button">Run Analytics Query</button>
         </div>
         <div class="status" id="status-line">Loading dataset profile...</div>
       </article>
@@ -225,9 +224,9 @@
       <aside class="card">
         <h2>What It Stresses</h2>
         <p>
-          The backend is intentionally doing CPU-bound work in JS: repeated scans, string matching, score weighting,
-          sorting, and bucket aggregation. This is the kind of path that should tell you quickly whether Boa is viable
-          for real analytical workloads or only for orchestration.
+          The expensive work is still the same query shape: repeated scans, string matching, score weighting, sorting,
+          and bucket aggregation. The difference is that the renderer now calls a public Volt API instead of pushing
+          the whole loop through raw IPC and Boa.
         </p>
         <div class="metrics">
           <div class="metric">
@@ -257,8 +256,8 @@
       </article>
 
       <article class="card">
-        <h2>Latest Benchmark Result</h2>
-        <pre id="result-output">Run the benchmark to inspect timing data.</pre>
+        <h2>Latest Query Result</h2>
+        <pre id="result-output">Run the query to inspect timing data.</pre>
       </article>
     </section>
   </main>

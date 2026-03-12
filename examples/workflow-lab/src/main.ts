@@ -1,31 +1,10 @@
-interface VoltBridge {
-  invoke<T = unknown>(method: string, args?: unknown): Promise<T>;
-}
-
-declare global {
-  interface Window {
-    __volt__?: VoltBridge;
-  }
-}
-
-interface PluginInfo {
-  name: string;
-  label: string;
-  description: string;
-}
-
-interface WorkflowBenchmarkResult {
-  batchSize: number;
-  passes: number;
-  pipeline: string[];
-  backendDurationMs: number;
-  payloadBytes: number;
-}
-
-const bridge = window.__volt__;
-if (!bridge?.invoke) {
-  throw new Error('window.__volt__.invoke is unavailable');
-}
+import {
+  collectSelectedPipeline,
+  formatWorkflowStatus,
+  loadWorkflowPlugins,
+  runWorkflowPipeline,
+  type WorkflowFormState,
+} from './workflow-client.js';
 
 const batchSizeInput = getInput('batch-size');
 const passesInput = getInput('passes');
@@ -46,7 +25,7 @@ runButton?.addEventListener('click', () => {
 void loadPlugins();
 
 async function loadPlugins(): Promise<void> {
-  const plugins = await bridge.invoke<PluginInfo[]>('workflow:plugins');
+  const plugins = await loadWorkflowPlugins();
   pluginList.innerHTML = '';
   for (const plugin of plugins) {
     const wrapper = document.createElement('label');
@@ -65,10 +44,12 @@ async function loadPlugins(): Promise<void> {
 }
 
 async function runBenchmark(): Promise<void> {
-  const pipeline = Array.from(pluginList.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'))
-    .filter((input) => input.checked)
-    .map((input) => input.dataset.pluginName ?? '')
-    .filter((value) => value.length > 0);
+  const pipeline = collectSelectedPipeline(Array.from(
+    pluginList.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'),
+  ).map((input) => ({
+    checked: input.checked,
+    pluginName: input.dataset.pluginName,
+  })));
 
   if (pipeline.length === 0) {
     statusLine.textContent = 'Select at least one plugin before running the workflow benchmark.';
@@ -79,11 +60,7 @@ async function runBenchmark(): Promise<void> {
   statusLine.textContent = 'Running plugin pipeline in the main process...';
 
   try {
-    const result = await bridge.invoke<WorkflowBenchmarkResult>('workflow:run', {
-      batchSize: Number(batchSizeInput.value),
-      passes: Number(passesInput.value),
-      pipeline,
-    });
+    const result = await runWorkflowPipeline(readWorkflowForm(pipeline));
 
     metricPlugins.textContent = String(result.pipeline.length);
     metricDocs.textContent = `${result.batchSize} x ${result.passes}`;
@@ -95,7 +72,7 @@ async function runBenchmark(): Promise<void> {
       payloadBytes: result.payloadBytes,
     }, null, 2);
     resultOutput.textContent = JSON.stringify(result, null, 2);
-    statusLine.textContent = `Workflow complete in ${result.backendDurationMs} ms across ${result.pipeline.length} plugins.`;
+    statusLine.textContent = formatWorkflowStatus(result);
   } catch (error) {
     statusLine.textContent = error instanceof Error ? error.message : String(error);
   } finally {
@@ -117,4 +94,12 @@ function getElement(id: string): HTMLElement {
     throw new Error(`Missing element: ${id}`);
   }
   return element;
+}
+
+function readWorkflowForm(pipeline: string[]): WorkflowFormState {
+  return {
+    batchSize: Number(batchSizeInput.value),
+    passes: Number(passesInput.value),
+    pipeline,
+  };
 }
