@@ -8,6 +8,9 @@
 **/.turbo/
 **/.vite/
 **/.volt-dev/
+**/.volt-tmp/
+**/.volt-test-*/
+**/.volt-debug-*/
 **/.volt-assets.bin
 *.node
 coverage/

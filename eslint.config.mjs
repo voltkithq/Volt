@@ -11,6 +11,7 @@ export default tseslint.config(
       "**/coverage/**",
       "**/target/**",
       "**/.turbo/**",
+      "**/.volt-tmp/**",
       "**/.volt-e2e-smoke-*/**",
       "**/*.d.ts",
       "crates/volt-napi/*.node",
