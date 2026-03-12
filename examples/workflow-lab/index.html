@@ -210,12 +210,12 @@
   <main>
     <section class="layout">
       <article class="card">
-        <div class="eyebrow">Boa Stress Test 3</div>
+        <div class="eyebrow">Workflow API Demo</div>
         <h1>Workflow Lab</h1>
         <p>
-          This one is the strategic benchmark. It simulates the kind of plugin and background workflow engine that
-          could justify a main-process JS runtime: multiple configurable pipeline stages, lots of string and array work,
-          and enough orchestration to be meaningful instead of just dispatch glue.
+          This app uses Volt's public <code>workflow</code> API to drive a configurable plugin pipeline from the
+          renderer. The UI stays in plain TypeScript while the expensive batch execution moves onto the runtime's native
+          path instead of sitting in Boa hot loops.
         </p>
         <div class="controls">
           <label>
@@ -226,7 +226,7 @@
             Passes
             <input id="passes" type="number" min="1" max="8" step="1" value="3">
           </label>
-          <button id="run-workflow-benchmark" type="button">Run Workflow Benchmark</button>
+          <button id="run-workflow-benchmark" type="button">Run Workflow Pipeline</button>
         </div>
         <div class="plugin-grid" id="plugin-list"></div>
         <div class="status" id="status-line">Loading plugin registry...</div>
@@ -235,9 +235,8 @@
       <aside class="card">
         <h2>What It Asks</h2>
         <p>
-          If Volt keeps Boa, it should be because TypeScript in the main process enables real orchestration: plugin
-          chains, routing rules, queue policies, lifecycle hooks. This benchmark makes that question concrete by making
-          the plugin engine itself the workload.
+          This models a real background triage engine: choose the active plugins, run the batch, then inspect how the
+          native path routes documents and builds digests without exposing raw IPC plumbing in the renderer.
         </p>
         <div class="metrics">
           <div class="metric">
@@ -268,7 +267,7 @@
 
       <article class="card">
         <h2>Workflow Result</h2>
-        <pre id="result-output">Run the benchmark to inspect route totals and digests.</pre>
+        <pre id="result-output">Run the pipeline to inspect route totals and digests.</pre>
       </article>
     </section>
   </main>
