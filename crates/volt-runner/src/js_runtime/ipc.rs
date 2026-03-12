@@ -54,6 +54,19 @@ pub(super) async fn dispatch_ipc_request(
         Err(response) => return *response,
     };
 
+    if let Some(result) =
+        crate::modules::volt_bench::dispatch_native_fast_path(&request.method, request.args.clone())
+    {
+        return match result {
+            Ok(payload) => IpcResponse::success(request.id, payload),
+            Err(message) => IpcResponse::error_with_code(
+                request.id,
+                message,
+                IPC_HANDLER_ERROR_CODE.to_string(),
+            ),
+        };
+    }
+
     let dispatch_timeout = super::normalize_ipc_timeout(timeout);
 
     let request_id = request.id.clone();

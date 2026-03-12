@@ -26,6 +26,13 @@ const IPC_MODULE_BOOTSTRAP: &str = r#"
         return handler;
     };
 
+    const ensureUserChannel = (method) => {
+        if (method.startsWith('volt:')) {
+            throw new Error(`IPC channel is reserved by Volt: ${method}`);
+        }
+        return method;
+    };
+
     const toErrorPayload = (error) => {
         const message = error instanceof Error ? error.message : String(error);
         let errorCode = 'IPC_HANDLER_ERROR';
@@ -51,7 +58,7 @@ const IPC_MODULE_BOOTSTRAP: &str = r#"
 
     const ipcMain = Object.freeze({
         handle(method, handler) {
-            const key = normalizeMethod(method);
+            const key = ensureUserChannel(normalizeMethod(method));
             ensureHandler(handler);
             if (handlers.has(key)) {
                 throw new Error(`IPC handler already registered for channel: ${key}`);

@@ -14,6 +14,7 @@ mod event_helpers;
 pub mod secure_storage;
 #[cfg(test)]
 pub mod test_utils;
+pub mod volt_bench;
 pub mod volt_clipboard;
 pub mod volt_crypto;
 pub mod volt_db;
@@ -351,7 +352,7 @@ pub fn register_all_modules(
     context: &mut Context,
     module_loader: &MapModuleLoader,
 ) -> JsResult<Vec<RegisteredModule>> {
-    let mut registered_modules = Vec::with_capacity(17);
+    let mut registered_modules = Vec::with_capacity(18);
 
     let fs = volt_fs::build_module(context);
     module_loader.insert("volt:fs", fs.clone());
@@ -367,6 +368,14 @@ pub fn register_all_modules(
         global_name: "db",
         specifier: "volt:db",
         module: db,
+    });
+
+    let bench = volt_bench::build_module(context);
+    module_loader.insert("volt:bench", bench.clone());
+    registered_modules.push(RegisteredModule {
+        global_name: "bench",
+        specifier: "volt:bench",
+        module: bench,
     });
 
     let dialog = volt_dialog::build_module(context);

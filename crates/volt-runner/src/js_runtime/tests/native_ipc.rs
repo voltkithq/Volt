@@ -148,6 +148,40 @@ fn ipc_roundtrip_supports_sync_and_async_handlers() {
 }
 
 #[test]
+fn ipc_main_rejects_reserved_volt_channels() {
+    let runtime = JsRuntimeManager::start().expect("js runtime start");
+    let client = runtime.client();
+
+    let error = client
+        .eval_promise_string(
+            "(async () => {
+                    const { ipcMain } = await import('volt:ipc');
+                    ipcMain.handle('volt:native:data.query', () => ({ ok: true }));
+                    return 'unreachable';
+                })()",
+        )
+        .expect_err("reserved channel should be rejected");
+
+    assert!(error.contains("reserved by Volt"));
+}
+
+#[test]
+fn ipc_roundtrip_handles_reserved_native_fast_path_without_js_handler() {
+    let runtime = JsRuntimeManager::start().expect("js runtime start");
+    let response = dispatch_ipc_request(
+        &runtime.client(),
+        r#"{"id":"native-direct-1","method":"volt:native:data.query","args":{"datasetSize":1200,"iterations":2,"searchTerm":"risk"}}"#,
+    );
+
+    assert_eq!(response.id, "native-direct-1");
+    assert!(response.error.is_none());
+    assert_eq!(
+        response.result.as_ref().expect("native result")["datasetSize"],
+        serde_json::json!(1200)
+    );
+}
+
+#[test]
 fn ipc_roundtrip_returns_not_found_error() {
     let runtime = JsRuntimeManager::start().expect("js runtime start");
     let response = dispatch_ipc_request(

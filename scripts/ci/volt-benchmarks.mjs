@@ -223,6 +223,13 @@ function runBoaBaseline(bundleEnv, extraEnv = {}) {
   return parsePrefixedJson(output, 'VOLT_BENCH_JSON:');
 }
 
+function runBoaVariant(bundleEnv, engine, extraEnv = {}) {
+  return runBoaBaseline(bundleEnv, {
+    ...extraEnv,
+    VOLT_BENCH_ENGINE: engine,
+  });
+}
+
 function buildRatios(nodeSummary, boaSummary) {
   return {
     analyticsStudio: {
@@ -258,15 +265,65 @@ function buildRatios(nodeSummary, boaSummary) {
   };
 }
 
-function buildSingleSummary(nodeSummary, boaSummary) {
+function buildSpeedups(jsSummary, nativeSummary) {
+  return {
+    analyticsStudio: {
+      backendDurationMs: ratio(
+        metric(jsSummary.analyticsStudio, 'backendDurationMs'),
+        metric(nativeSummary.analyticsStudio, 'backendDurationMs'),
+      ),
+      roundTripMs: ratio(
+        metric(jsSummary.analyticsStudio, 'roundTripMs'),
+        metric(nativeSummary.analyticsStudio, 'roundTripMs'),
+      ),
+    },
+    syncStorm: {
+      backendDurationMs: ratio(
+        metric(jsSummary.syncStorm, 'backendDurationMs'),
+        metric(nativeSummary.syncStorm, 'backendDurationMs'),
+      ),
+      roundTripMs: ratio(
+        metric(jsSummary.syncStorm, 'roundTripMs'),
+        metric(nativeSummary.syncStorm, 'roundTripMs'),
+      ),
+    },
+    workflowLab: {
+      backendDurationMs: ratio(
+        metric(jsSummary.workflowLab, 'backendDurationMs'),
+        metric(nativeSummary.workflowLab, 'backendDurationMs'),
+      ),
+      roundTripMs: ratio(
+        metric(jsSummary.workflowLab, 'roundTripMs'),
+        metric(nativeSummary.workflowLab, 'roundTripMs'),
+      ),
+    },
+  };
+}
+
+function buildVariantSummary(nodeSummary, boaJsSummary, boaNativeSummary, directNativeSummary) {
+  return {
+    node: nodeSummary,
+    boaJs: boaJsSummary,
+    boaNative: boaNativeSummary,
+    directNative: directNativeSummary,
+    ratios: {
+      boaJsVsNode: buildRatios(nodeSummary, boaJsSummary),
+      boaNativeVsNode: buildRatios(nodeSummary, boaNativeSummary),
+      directNativeVsNode: buildRatios(nodeSummary, directNativeSummary),
+      forwardedNativeSpeedup: buildSpeedups(boaJsSummary, boaNativeSummary),
+      directNativeSpeedup: buildSpeedups(boaJsSummary, directNativeSummary),
+      directVsForwardedSpeedup: buildSpeedups(boaNativeSummary, directNativeSummary),
+    },
+  };
+}
+
+function buildSingleSummary(nodeSummary, boaJsSummary, boaNativeSummary, directNativeSummary) {
   return {
     generatedAt: new Date().toISOString(),
     platform: process.platform,
     mode: 'headless-backend-runtime',
     boaProfile: isReleaseMode ? 'release' : 'test',
-    node: nodeSummary,
-    boa: boaSummary,
-    ratios: buildRatios(nodeSummary, boaSummary),
+    ...buildVariantSummary(nodeSummary, boaJsSummary, boaNativeSummary, directNativeSummary),
   };
 }
 
@@ -277,7 +334,12 @@ async function main() {
     const bundleEnv = await bundleExampleBackends();
     const summary = isSweepMode
       ? runBenchmarkSweep(bundleEnv)
-      : buildSingleSummary(runNodeBaseline(), runBoaBaseline(bundleEnv));
+      : buildSingleSummary(
+        runNodeBaseline(),
+        runBoaVariant(bundleEnv, 'js'),
+        runBoaVariant(bundleEnv, 'native'),
+        runBoaVariant(bundleEnv, 'direct'),
+      );
 
     writeFileSync(summaryPath, `${JSON.stringify(summary, null, 2)}\n`, 'utf8');
 
@@ -286,24 +348,24 @@ async function main() {
     if (isSweepMode) {
       for (const profile of summary.profiles) {
         console.log(
-          `[bench] ${profile.id} analytics backend ratio=${profile.ratios.analyticsStudio.backendDurationMs} roundTrip ratio=${profile.ratios.analyticsStudio.roundTripMs}`,
+          `[bench] ${profile.id} analytics js ratio=${profile.ratios.boaJsVsNode.analyticsStudio.backendDurationMs} forwarded ratio=${profile.ratios.boaNativeVsNode.analyticsStudio.backendDurationMs} direct ratio=${profile.ratios.directNativeVsNode.analyticsStudio.backendDurationMs} direct speedup=${profile.ratios.directNativeSpeedup.analyticsStudio.backendDurationMs}`,
         );
         console.log(
-          `[bench] ${profile.id} sync backend ratio=${profile.ratios.syncStorm.backendDurationMs} roundTrip ratio=${profile.ratios.syncStorm.roundTripMs}`,
+          `[bench] ${profile.id} sync js ratio=${profile.ratios.boaJsVsNode.syncStorm.backendDurationMs} forwarded ratio=${profile.ratios.boaNativeVsNode.syncStorm.backendDurationMs} direct ratio=${profile.ratios.directNativeVsNode.syncStorm.backendDurationMs} direct speedup=${profile.ratios.directNativeSpeedup.syncStorm.backendDurationMs}`,
         );
         console.log(
-          `[bench] ${profile.id} workflow backend ratio=${profile.ratios.workflowLab.backendDurationMs} roundTrip ratio=${profile.ratios.workflowLab.roundTripMs}`,
+          `[bench] ${profile.id} workflow js ratio=${profile.ratios.boaJsVsNode.workflowLab.backendDurationMs} forwarded ratio=${profile.ratios.boaNativeVsNode.workflowLab.backendDurationMs} direct ratio=${profile.ratios.directNativeVsNode.workflowLab.backendDurationMs} direct speedup=${profile.ratios.directNativeSpeedup.workflowLab.backendDurationMs}`,
         );
       }
     } else {
       console.log(
-        `[bench] analytics backend ratio=${summary.ratios.analyticsStudio.backendDurationMs} roundTrip ratio=${summary.ratios.analyticsStudio.roundTripMs}`,
+        `[bench] analytics js ratio=${summary.ratios.boaJsVsNode.analyticsStudio.backendDurationMs} forwarded ratio=${summary.ratios.boaNativeVsNode.analyticsStudio.backendDurationMs} direct ratio=${summary.ratios.directNativeVsNode.analyticsStudio.backendDurationMs} direct speedup=${summary.ratios.directNativeSpeedup.analyticsStudio.backendDurationMs}`,
       );
       console.log(
-        `[bench] sync backend ratio=${summary.ratios.syncStorm.backendDurationMs} roundTrip ratio=${summary.ratios.syncStorm.roundTripMs}`,
+        `[bench] sync js ratio=${summary.ratios.boaJsVsNode.syncStorm.backendDurationMs} forwarded ratio=${summary.ratios.boaNativeVsNode.syncStorm.backendDurationMs} direct ratio=${summary.ratios.directNativeVsNode.syncStorm.backendDurationMs} direct speedup=${summary.ratios.directNativeSpeedup.syncStorm.backendDurationMs}`,
       );
       console.log(
-        `[bench] workflow backend ratio=${summary.ratios.workflowLab.backendDurationMs} roundTrip ratio=${summary.ratios.workflowLab.roundTripMs}`,
+        `[bench] workflow js ratio=${summary.ratios.boaJsVsNode.workflowLab.backendDurationMs} forwarded ratio=${summary.ratios.boaNativeVsNode.workflowLab.backendDurationMs} direct ratio=${summary.ratios.directNativeVsNode.workflowLab.backendDurationMs} direct speedup=${summary.ratios.directNativeSpeedup.workflowLab.backendDurationMs}`,
       );
     }
   } finally {
@@ -323,13 +385,13 @@ function runBenchmarkSweep(bundleEnv) {
         VOLT_BENCH_PROFILE_JSON: JSON.stringify(profile.config),
       };
       const nodeSummary = runNodeBaseline(overrideEnv);
-      const boaSummary = runBoaBaseline(bundleEnv, overrideEnv);
+      const boaJsSummary = runBoaVariant(bundleEnv, 'js', overrideEnv);
+      const boaNativeSummary = runBoaVariant(bundleEnv, 'native', overrideEnv);
+      const directNativeSummary = runBoaVariant(bundleEnv, 'direct', overrideEnv);
       return {
         id: profile.id,
         config: profile.config,
-        node: nodeSummary,
-        boa: boaSummary,
-        ratios: buildRatios(nodeSummary, boaSummary),
+        ...buildVariantSummary(nodeSummary, boaJsSummary, boaNativeSummary, directNativeSummary),
       };
     }),
   };

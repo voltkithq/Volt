@@ -134,6 +134,58 @@ describe('dev backend bootstrap', () => {
     expect(script).toContain('demo:event');
   });
 
+  it('loads the volt:bench dev shim for backend handlers', async () => {
+    const project = createTempProject({
+      'backend.ts': `
+        import { ipcMain } from 'volt:ipc';
+        import * as bench from 'volt:bench';
+
+        ipcMain.handle('dev-backend:bench', async () => {
+          const profile = await bench.analyticsProfile({ datasetSize: 1_200 });
+          const workflow = await bench.runWorkflowBenchmark({ batchSize: 800, passes: 2 });
+          return {
+            datasetSize: profile.datasetSize,
+            batchSize: workflow.batchSize,
+            pipelineLength: workflow.pipeline.length,
+          };
+        });
+      `,
+      'tsconfig.json': JSON.stringify({
+        compilerOptions: {
+          target: 'ES2022',
+          module: 'ESNext',
+          moduleResolution: 'bundler',
+          strict: true,
+        },
+      }),
+    });
+    cleanups.push(project.cleanup);
+
+    configureRuntimeModuleState({
+      projectRoot: project.rootDir,
+      defaultWindowId: 'window-dev',
+      nativeRuntime: { windowEvalScript: vi.fn() },
+    });
+
+    const backendLoadState = await loadBackendEntrypointForDev(project.rootDir, './backend.ts');
+    cleanups.push(backendLoadState.dispose);
+
+    const response = await ipcMain.processRequest(
+      'req-bench',
+      'dev-backend:bench',
+      null,
+      { timeoutMs: 200 },
+    );
+    expect(response).toEqual({
+      id: 'req-bench',
+      result: {
+        datasetSize: 1_200,
+        batchSize: 800,
+        pipelineLength: 5,
+      },
+    });
+  });
+
   it('fails fast when backend imports unsupported volt:* modules', async () => {
     const project = createTempProject({
       'backend.ts': `

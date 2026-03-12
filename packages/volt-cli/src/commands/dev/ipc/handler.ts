@@ -20,6 +20,7 @@ import {
   normalizeIpcPayloadBytes,
   type IpcResponse,
 } from './response.js';
+import { tryHandleNativeFastPath } from './native-fast-path.js';
 
 export async function handleIpcMessageEvent(
   native: { windowEvalScript(jsId: string, script: string): void },
@@ -89,9 +90,12 @@ export async function handleIpcMessageEvent(
 
   let response: IpcResponse;
   try {
-    response = await ipcMain.processRequest(request.id, request.method, request.args, {
-      timeoutMs: options.timeoutMs,
-    });
+    response = await tryHandleNativeFastPath(request) ?? await ipcMain.processRequest(
+      request.id,
+      request.method,
+      request.args,
+      { timeoutMs: options.timeoutMs },
+    );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     response = { id: request.id, error: message };

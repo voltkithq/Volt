@@ -39,6 +39,12 @@ describe('ipcMain', () => {
     );
   });
 
+  it('handle rejects reserved Volt channels', () => {
+    expect(() => ipcMain.handle('volt:native:data.query', () => 'nope')).toThrow(
+      'reserved by Volt',
+    );
+  });
+
   it('removeHandler removes a handler', () => {
     ipcMain.handle('test-channel', () => 'x');
     ipcMain.removeHandler('test-channel');

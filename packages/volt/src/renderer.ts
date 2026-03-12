@@ -4,6 +4,10 @@
  */
 export { invoke, on, off } from './ipc.js';
 export type { IpcErrorCode } from './ipc.js';
+export { data } from './data.js';
+export { workflow } from './workflow.js';
+export type { DataProfile, DataProfileOptions, DataQueryOptions, DataQueryResult } from './data.js';
+export type { WorkflowPluginInfo, WorkflowRunOptions, WorkflowRunResult } from './workflow.js';
 export {
   createContractInvoker,
   createLegacyInvokeAdapter,

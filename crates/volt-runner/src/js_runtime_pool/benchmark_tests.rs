@@ -12,10 +12,66 @@ const ANALYTICS_BUNDLE_ENV: &str = "VOLT_BENCH_ANALYTICS_BUNDLE";
 const SYNC_BUNDLE_ENV: &str = "VOLT_BENCH_SYNC_BUNDLE";
 const WORKFLOW_BUNDLE_ENV: &str = "VOLT_BENCH_WORKFLOW_BUNDLE";
 const BENCHMARK_PROFILE_ENV: &str = "VOLT_BENCH_PROFILE_JSON";
+const BENCHMARK_ENGINE_ENV: &str = "VOLT_BENCH_ENGINE";
 
 const IPC_TIMEOUT: Duration = Duration::from_secs(30);
 const SYNC_TIMEOUT: Duration = Duration::from_secs(30);
 const SYNC_POLL_INTERVAL: Duration = Duration::from_millis(10);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BenchmarkEngine {
+    Js,
+    Native,
+    Direct,
+}
+
+impl BenchmarkEngine {
+    fn from_env() -> Result<Self, String> {
+        match env::var(BENCHMARK_ENGINE_ENV) {
+            Ok(value) if value.eq_ignore_ascii_case("direct") => Ok(Self::Direct),
+            Ok(value) if value.eq_ignore_ascii_case("native") => Ok(Self::Native),
+            Ok(value) if value.eq_ignore_ascii_case("js") || value.trim().is_empty() => {
+                Ok(Self::Js)
+            }
+            Ok(value) => Err(format!("unsupported {BENCHMARK_ENGINE_ENV} value: {value}")),
+            Err(env::VarError::NotPresent) => Ok(Self::Js),
+            Err(error) => Err(format!("failed to read {BENCHMARK_ENGINE_ENV}: {error}")),
+        }
+    }
+
+    fn payload(self, payload: JsonValue) -> JsonValue {
+        if !matches!(self, Self::Native) {
+            return payload;
+        }
+
+        let mut payload = payload;
+        if let Some(object) = payload.as_object_mut() {
+            object.insert("engine".to_string(), json!("native"));
+        }
+        payload
+    }
+
+    fn analytics_profile_method(self) -> &'static str {
+        match self {
+            Self::Direct => crate::modules::volt_bench::DATA_PROFILE_CHANNEL,
+            Self::Js | Self::Native => "analytics:profile",
+        }
+    }
+
+    fn analytics_run_method(self) -> &'static str {
+        match self {
+            Self::Direct => crate::modules::volt_bench::DATA_QUERY_CHANNEL,
+            Self::Js | Self::Native => "analytics:run",
+        }
+    }
+
+    fn workflow_run_method(self) -> &'static str {
+        match self {
+            Self::Direct => crate::modules::volt_bench::WORKFLOW_RUN_CHANNEL,
+            Self::Js | Self::Native => "workflow:run",
+        }
+    }
+}
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -177,12 +233,13 @@ fn headless_example_backends_emit_benchmark_summary() {
 
 fn run_headless_example_backends() -> HeadlessBenchmarkSummary {
     let profile = load_benchmark_profile().expect("parse benchmark profile overrides");
+    let engine = BenchmarkEngine::from_env().expect("parse benchmark engine override");
     HeadlessBenchmarkSummary {
         analytics_studio: capture_case(|| {
-            run_analytics_studio_benchmark(&profile.analytics_studio)
+            run_analytics_studio_benchmark(&profile.analytics_studio, engine)
         }),
         sync_storm: capture_case(|| run_sync_storm_benchmark(&profile.sync_storm)),
-        workflow_lab: capture_case(|| run_workflow_lab_benchmark(&profile.workflow_lab)),
+        workflow_lab: capture_case(|| run_workflow_lab_benchmark(&profile.workflow_lab, engine)),
     }
 }
 
@@ -210,28 +267,29 @@ fn capture_case<T>(runner: impl FnOnce() -> Result<T, String>) -> BenchmarkCase<
 
 fn run_analytics_studio_benchmark(
     config: &AnalyticsStudioConfig,
+    engine: BenchmarkEngine,
 ) -> Result<AnalyticsStudioMetrics, String> {
     let (_pool, client) = load_client_from_env(ANALYTICS_BUNDLE_ENV)?;
 
     let _profile = dispatch_result(
         &client,
         "analytics-profile",
-        "analytics:profile",
-        json!({ "datasetSize": config.dataset_size }),
+        engine.analytics_profile_method(),
+        engine.payload(json!({ "datasetSize": config.dataset_size })),
     )?;
 
     let started_at = Instant::now();
     let payload = dispatch_result(
         &client,
         "analytics-run",
-        "analytics:run",
-        json!({
+        engine.analytics_run_method(),
+        engine.payload(json!({
             "datasetSize": config.dataset_size,
             "iterations": config.iterations,
             "searchTerm": config.search_term,
             "minScore": config.min_score,
             "topN": config.top_n,
-        }),
+        })),
     )?;
     let round_trip_ms = duration_ms(started_at.elapsed());
 
@@ -302,18 +360,21 @@ fn run_sync_storm_benchmark(config: &SyncStormConfig) -> Result<SyncStormMetrics
     }
 }
 
-fn run_workflow_lab_benchmark(config: &WorkflowLabConfig) -> Result<WorkflowLabMetrics, String> {
+fn run_workflow_lab_benchmark(
+    config: &WorkflowLabConfig,
+    engine: BenchmarkEngine,
+) -> Result<WorkflowLabMetrics, String> {
     let (_pool, client) = load_client_from_env(WORKFLOW_BUNDLE_ENV)?;
 
     let started_at = Instant::now();
     let payload = dispatch_result(
         &client,
         "workflow-run",
-        "workflow:run",
-        json!({
+        engine.workflow_run_method(),
+        engine.payload(json!({
             "batchSize": config.batch_size,
             "passes": config.passes,
-        }),
+        })),
     )?;
     let round_trip_ms = duration_ms(started_at.elapsed());
     let pipeline = payload

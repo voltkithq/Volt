@@ -7,17 +7,19 @@ use crossbeam_channel as channel;
 use serde_json::Value as JsonValue;
 use volt_core::command::{self, AppCommand};
 use volt_core::ipc::{
-    IPC_HANDLER_ERROR_CODE, IPC_HANDLER_TIMEOUT_CODE, IPC_MAX_REQUEST_BYTES, IpcResponse,
-    response_script,
+    IPC_HANDLER_ERROR_CODE, IPC_HANDLER_TIMEOUT_CODE, IPC_MAX_REQUEST_BYTES, IpcRequest,
+    IpcResponse, response_script,
 };
 
 use crate::js_runtime_pool::JsRuntimePoolClient;
+use crate::modules::volt_bench;
 
 const DEFAULT_IPC_HANDLER_TIMEOUT: Duration = Duration::from_secs(5);
 const DEFAULT_MAX_IN_FLIGHT_PER_WINDOW: usize = 32;
 const DEFAULT_MAX_IN_FLIGHT_TOTAL: usize = 128;
 const DEFAULT_IPC_DISPATCH_WORKER_COUNT: usize = 4;
 const IPC_IN_FLIGHT_LIMIT_CODE: &str = "IPC_IN_FLIGHT_LIMIT";
+const IPC_PROTOTYPE_CHECK_MAX_DEPTH: usize = 64;
 
 struct IpcDispatchTask {
     js_window_id: String,
@@ -63,27 +65,12 @@ impl IpcBridge {
                             Err(_) => return,
                         };
 
-                        let request_id_for_error = task.request_id.clone();
-                        let response = worker_runtime_client
-                            .dispatch_ipc_message(&task.raw, task.timeout)
-                            .unwrap_or_else(|error| {
-                                if error.contains("timed out after") {
-                                    IpcResponse::error_with_details(
-                                        request_id_for_error,
-                                        format!("IPC bridge failure: {error}"),
-                                        IPC_HANDLER_TIMEOUT_CODE.to_string(),
-                                        serde_json::json!({
-                                            "timeoutMs": task.timeout.as_millis()
-                                        }),
-                                    )
-                                } else {
-                                    IpcResponse::error_with_code(
-                                        request_id_for_error,
-                                        format!("IPC bridge failure: {error}"),
-                                        IPC_HANDLER_ERROR_CODE.to_string(),
-                                    )
-                                }
-                            });
+                        let response = dispatch_ipc_task(
+                            &worker_runtime_client,
+                            &task.raw,
+                            &task.request_id,
+                            task.timeout,
+                        );
 
                         Self::send_response_to_window(&task.js_window_id, response);
                         Self::release_window_slot_for(
@@ -284,6 +271,115 @@ fn extract_request_id(raw: &str) -> String {
             .unwrap_or_else(|| "unknown".to_string()),
         Err(_) => "unknown".to_string(),
     }
+}
+
+fn try_dispatch_native_fast_path(raw: &str) -> Option<IpcResponse> {
+    let parsed: JsonValue = serde_json::from_str(raw).ok()?;
+    let request_id = extract_request_id_from_value(&parsed);
+
+    if let Err(message) = validate_prototype_pollution(&parsed, 0) {
+        return Some(IpcResponse::error_with_code(
+            request_id,
+            message,
+            IPC_HANDLER_ERROR_CODE.to_string(),
+        ));
+    }
+
+    let request: IpcRequest = match serde_json::from_value(parsed) {
+        Ok(request) => request,
+        Err(error) => {
+            return Some(IpcResponse::error_with_code(
+                request_id,
+                format!("invalid IPC request: {error}"),
+                IPC_HANDLER_ERROR_CODE.to_string(),
+            ));
+        }
+    };
+
+    volt_bench::dispatch_native_fast_path(&request.method, request.args).map(
+        |result| match result {
+            Ok(payload) => IpcResponse::success(request.id, payload),
+            Err(error) => {
+                IpcResponse::error_with_code(request.id, error, IPC_HANDLER_ERROR_CODE.to_string())
+            }
+        },
+    )
+}
+
+fn dispatch_ipc_task(
+    runtime_client: &JsRuntimePoolClient,
+    raw: &str,
+    request_id: &str,
+    timeout: Duration,
+) -> IpcResponse {
+    if let Some(response) = try_dispatch_native_fast_path(raw) {
+        return match runtime_client.check_ipc_rate_limit() {
+            Ok(()) => response,
+            Err(error) => IpcResponse::error_with_code(
+                request_id.to_string(),
+                error,
+                IPC_HANDLER_ERROR_CODE.to_string(),
+            ),
+        };
+    }
+
+    runtime_client
+        .dispatch_ipc_message(raw, timeout)
+        .unwrap_or_else(|error| {
+            if error.contains("timed out after") {
+                IpcResponse::error_with_details(
+                    request_id.to_string(),
+                    format!("IPC bridge failure: {error}"),
+                    IPC_HANDLER_TIMEOUT_CODE.to_string(),
+                    serde_json::json!({
+                        "timeoutMs": timeout.as_millis()
+                    }),
+                )
+            } else {
+                IpcResponse::error_with_code(
+                    request_id.to_string(),
+                    format!("IPC bridge failure: {error}"),
+                    IPC_HANDLER_ERROR_CODE.to_string(),
+                )
+            }
+        })
+}
+
+fn extract_request_id_from_value(value: &JsonValue) -> String {
+    value
+        .get("id")
+        .and_then(JsonValue::as_str)
+        .map(ToString::to_string)
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+fn validate_prototype_pollution(value: &JsonValue, depth: usize) -> Result<(), String> {
+    if depth > IPC_PROTOTYPE_CHECK_MAX_DEPTH {
+        return Err(format!(
+            "payload nesting exceeds max depth ({depth} > {IPC_PROTOTYPE_CHECK_MAX_DEPTH})"
+        ));
+    }
+
+    match value {
+        JsonValue::Object(map) => {
+            for key in map.keys() {
+                if key == "__proto__" || key == "constructor" || key == "prototype" {
+                    return Err("prototype pollution attempt detected".to_string());
+                }
+            }
+            for nested in map.values() {
+                validate_prototype_pollution(nested, depth + 1)?;
+            }
+        }
+        JsonValue::Array(array) => {
+            for nested in array {
+                validate_prototype_pollution(nested, depth + 1)?;
+            }
+        }
+        _ => {}
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
