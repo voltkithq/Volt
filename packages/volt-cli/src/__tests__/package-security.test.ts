@@ -71,6 +71,11 @@ describe('package NSIS security hardening', () => {
     expect(desktop).toContain('\nExec=AppRun\n');
   });
 
+  it('writes a desktop icon entry for Linux package metadata', () => {
+    const desktop = __testOnly.generateDesktopFile('Volt App', 'volt-app', { identifier: 'com.volt.test' });
+    expect(desktop).toContain('\nIcon=volt-app\n');
+  });
+
   it('normalizes Debian control version strings to safe characters', () => {
     expect(__testOnly.normalizeDebianControlVersion(' 1.0.0 beta/rc ')).toBe('1.0.0-beta-rc');
     expect(__testOnly.normalizeDebianControlVersion('!!!')).toBe('0.1.0');

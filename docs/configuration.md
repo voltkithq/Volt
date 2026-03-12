@@ -134,7 +134,7 @@ Packaging configuration for platform-specific installers.
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `identifier` | `string` | Yes | Unique app identifier (e.g., `'com.example.myapp'`) |
-| `icon` | `string` | No | Path to the application icon |
+| `icon` | `string` | No | Path to the application icon. If omitted, Linux packages use a generated placeholder icon. |
 | `categories` | `string[]` | No | App categories (for Linux `.desktop` files) |
 | `windows` | `PackageWindowsConfig` | No | Windows packaging options (`installMode`, `silentAllUsers`, MSIX metadata) |
 | `enterprise` | `PackageEnterpriseConfig` | No | Enterprise output controls for ADMX/docs bundle generation |
@@ -344,4 +344,3 @@ The CLI validates configuration at load time and reports errors:
 - Signing: missing identity/certificate without env var → logged as warning
 - Signing: invalid `digestAlgorithm` → logged as error
 - Signing: entitlements path not found → logged as error
-

@@ -230,6 +230,7 @@ Name=${appName}
 Exec=${execCommand}
 Terminal=false
 Type=Application
+Icon=${binaryName}
 Categories=${categories};
 `;
 }

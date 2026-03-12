@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -143,6 +143,10 @@ describe.runIf(process.platform === 'linux')('linux packaging CI filename checks
       });
       expect(appImageResult.exitCode).toBeNull();
       expect(existsSync(join(projectDir, 'dist-package', 'my-app-0.1.0-aarch64.AppImage'))).toBe(true);
+      expect(existsSync(join(projectDir, 'dist-package', 'my-app.AppDir', 'my-app.svg'))).toBe(true);
+      expect(
+        readFileSync(join(projectDir, 'dist-package', 'my-app.AppDir', 'my-app.desktop'), 'utf8'),
+      ).toContain('\nIcon=my-app\n');
 
       const debResult = await runPackageCommand(projectDir, {
         target: 'aarch64-unknown-linux-gnu',
@@ -150,6 +154,22 @@ describe.runIf(process.platform === 'linux')('linux packaging CI filename checks
       });
       expect(debResult.exitCode).toBeNull();
       expect(existsSync(join(projectDir, 'dist-package', 'my-app_0.1.0_arm64.deb'))).toBe(true);
+      expect(
+        existsSync(
+          join(
+            projectDir,
+            'dist-package',
+            'my-app_0.1.0_arm64',
+            'usr',
+            'share',
+            'icons',
+            'hicolor',
+            'scalable',
+            'apps',
+            'my-app.svg',
+          ),
+        ),
+      ).toBe(true);
     } finally {
       process.env.PATH = previousPath;
     }

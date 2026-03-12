@@ -1,4 +1,4 @@
-import { resolve } from 'node:path';
+import { resolve, extname } from 'node:path';
 import { chmodSync, copyFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { signMacOS, signWindows } from '../../utils/signing.js';
 import type { SigningArtifactResult } from '../../utils/signing.js';
@@ -237,10 +237,14 @@ export async function packageLinux(
   const formats = format ? [format] : ['appimage', 'deb'];
   const missingTools: string[] = [];
   const debControlVersion = normalizeDebianControlVersion(version);
+  const linuxIcon = resolveLinuxPackageIcon(binaryName, config.icon);
   if (debControlVersion !== version) {
     console.warn(
       `[volt] Normalized Debian control version from "${version}" to "${debControlVersion}".`,
     );
+  }
+  if (linuxIcon.message) {
+    console.log(`[volt] ${linuxIcon.message}`);
   }
 
   for (const fmt of formats) {
@@ -258,6 +262,7 @@ export async function packageLinux(
 
       const desktopEntry = generateDesktopFile(appName, binaryName, config, 'AppRun');
       writeFileSync(resolve(appDirPath, `${binaryName}.desktop`), desktopEntry);
+      writeLinuxPackageIcon(appDirPath, linuxIcon, { includeAppDirRoot: true });
 
       const appRun = generateAppRun(binaryName);
       writeFileSync(resolve(appDirPath, 'AppRun'), appRun, { mode: 0o755 });
@@ -311,6 +316,7 @@ export async function packageLinux(
 
       const desktopEntry = generateDesktopFile(appName, binaryName, config);
       writeFileSync(resolve(debDesktopDir, `${binaryName}.desktop`), desktopEntry);
+      writeLinuxPackageIcon(debDir, linuxIcon);
 
       const debPath = resolve(outDir, `${binaryName}_${artifactVersion}_${debArchitecture}.deb`);
       if (!runPackagingTool(
@@ -341,6 +347,13 @@ const PLACEHOLDER_PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7Yz0QAAAAASUVORK5CYII=',
   'base64',
 );
+const PLACEHOLDER_LINUX_SVG = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-label="Volt app">
+  <rect width="256" height="256" rx="48" fill="#101828" />
+  <path d="M76 56h33l25 93 23-93h23l-36 144h-30L76 56Z" fill="#ffffff" />
+</svg>
+`;
+const SUPPORTED_LINUX_ICON_EXTENSIONS = new Set(['.png', '.svg', '.xpm']);
 
 function writeMsixAssets(stagingDir: string, iconPath: string | undefined): MsixAssetPaths {
   const assetsDir = resolve(stagingDir, 'Assets');
@@ -361,6 +374,71 @@ function writeMsixAssets(stagingDir: string, iconPath: string | undefined): Msix
     square44Logo: 'Assets/Square44x44Logo.png',
     square150Logo: 'Assets/Square150x150Logo.png',
   };
+}
+
+interface LinuxPackageIcon {
+  fileName: string;
+  sourcePath: string | null;
+  placeholderContents: string | null;
+  themeDirectory: string[];
+  message: string | null;
+}
+
+function resolveLinuxPackageIcon(binaryName: string, iconPath: string | undefined): LinuxPackageIcon {
+  if (iconPath && existsSync(iconPath)) {
+    const extension = extname(iconPath).toLowerCase();
+    if (SUPPORTED_LINUX_ICON_EXTENSIONS.has(extension)) {
+      return {
+        fileName: `${binaryName}${extension}`,
+        sourcePath: iconPath,
+        placeholderContents: null,
+        themeDirectory: extension === '.svg'
+          ? ['usr', 'share', 'icons', 'hicolor', 'scalable', 'apps']
+          : ['usr', 'share', 'icons', 'hicolor', '256x256', 'apps'],
+        message: null,
+      };
+    }
+
+    return {
+      fileName: `${binaryName}.svg`,
+      sourcePath: null,
+      placeholderContents: PLACEHOLDER_LINUX_SVG,
+      themeDirectory: ['usr', 'share', 'icons', 'hicolor', 'scalable', 'apps'],
+      message: `Linux packaging supports .png, .svg, or .xpm icons. Using a generated placeholder icon instead of "${iconPath}".`,
+    };
+  }
+
+  return {
+    fileName: `${binaryName}.svg`,
+    sourcePath: null,
+    placeholderContents: PLACEHOLDER_LINUX_SVG,
+    themeDirectory: ['usr', 'share', 'icons', 'hicolor', 'scalable', 'apps'],
+    message: iconPath
+      ? `Configured icon "${iconPath}" was not found. Using a generated placeholder icon for Linux packaging.`
+      : 'No application icon configured. Using a generated placeholder icon for Linux packaging.',
+  };
+}
+
+function writeLinuxPackageIcon(
+  rootDir: string,
+  icon: LinuxPackageIcon,
+  options: { includeAppDirRoot?: boolean } = {},
+): void {
+  const themeDir = resolve(rootDir, ...icon.themeDirectory);
+  mkdirSync(themeDir, { recursive: true });
+  writeLinuxIconFile(resolve(themeDir, icon.fileName), icon);
+
+  if (options.includeAppDirRoot) {
+    writeLinuxIconFile(resolve(rootDir, icon.fileName), icon);
+  }
+}
+
+function writeLinuxIconFile(path: string, icon: LinuxPackageIcon): void {
+  if (icon.sourcePath) {
+    copyFileSync(icon.sourcePath, path);
+    return;
+  }
+  writeFileSync(path, icon.placeholderContents ?? PLACEHOLDER_LINUX_SVG, 'utf8');
 }
 
 function normalizeMsixIdentityName(candidate: string | undefined, binaryName: string): string {

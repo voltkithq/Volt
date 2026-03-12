@@ -165,6 +165,8 @@ volt package [options]
 | macOS | `.app` bundle, optionally `.dmg` |
 | Linux | AppImage (`.AppImage`) and Debian package (`.deb`) |
 
+If `package.icon` is omitted, Volt generates a placeholder icon for Linux packaging so AppImage and `.desktop` metadata remain valid.
+
 4. If code signing is configured (via `package.signing` in config or `VOLT_*` environment variables), signs the output:
    - **macOS**: Signs the `.app` bundle with `codesign`, optionally notarizes with `notarytool`
    - **Windows local**: Signs with `signtool` or `osslsigncode`
@@ -245,4 +247,3 @@ All commands read from `volt.config.ts` (or `volt.config.js` / `volt.config.mjs`
 3. `volt.config.mjs`
 
 If no config file is found, default values are used. See [Configuration Reference](configuration.md) for all options.
-
