@@ -82,6 +82,11 @@ jobs:
           sudo install -m 0755 /tmp/appimagetool /usr/local/bin/appimagetool
           sudo rm -f /tmp/appimagetool
 
+      - name: Build volt-napi (for packaging integration)
+        run: |
+          cargo build -p volt-napi
+          node scripts/ci/copy-napi-binding.mjs
+
       - name: Run end-to-end Linux packaging integration
         env:
           APPIMAGE_EXTRACT_AND_RUN: '1'
