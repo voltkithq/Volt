@@ -125,21 +125,11 @@ struct WorkflowLabMetrics {
     payload_bytes: u64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 struct BenchmarkProfile {
     analytics_studio: AnalyticsStudioConfig,
     sync_storm: SyncStormConfig,
     workflow_lab: WorkflowLabConfig,
-}
-
-impl Default for BenchmarkProfile {
-    fn default() -> Self {
-        Self {
-            analytics_studio: AnalyticsStudioConfig::default(),
-            sync_storm: SyncStormConfig::default(),
-            workflow_lab: WorkflowLabConfig::default(),
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -341,22 +331,20 @@ fn run_sync_storm_benchmark(config: &SyncStormConfig) -> Result<SyncStormMetrics
             .get("lastSummary")
             .and_then(|value| if value.is_null() { None } else { Some(value) });
 
-        if active_scenario.is_none() {
-            if let Some(summary) = last_summary {
-                let summary_id = json_string(summary, "scenarioId")?;
-                if summary_id == scenario_id {
-                    return Ok(SyncStormMetrics {
-                        worker_count: json_u64(summary, "workerCount")?,
-                        ticks_per_worker: json_u64(summary, "ticksPerWorker")?,
-                        total_tick_events: json_u64(summary, "totalTickEvents")?,
-                        snapshot_events: json_u64(summary, "snapshotEvents")?,
-                        backend_duration_ms: json_u64(summary, "backendDurationMs")?,
-                        round_trip_ms: duration_ms(started_at.elapsed()),
-                        average_drift_ms: json_f64(summary, "averageDriftMs")?,
-                        max_drift_ms: json_u64(summary, "maxDriftMs")?,
-                        queue_peak: json_u64(summary, "queuePeak")?,
-                    });
-                }
+        if active_scenario.is_none() && let Some(summary) = last_summary {
+            let summary_id = json_string(summary, "scenarioId")?;
+            if summary_id == scenario_id {
+                return Ok(SyncStormMetrics {
+                    worker_count: json_u64(summary, "workerCount")?,
+                    ticks_per_worker: json_u64(summary, "ticksPerWorker")?,
+                    total_tick_events: json_u64(summary, "totalTickEvents")?,
+                    snapshot_events: json_u64(summary, "snapshotEvents")?,
+                    backend_duration_ms: json_u64(summary, "backendDurationMs")?,
+                    round_trip_ms: duration_ms(started_at.elapsed()),
+                    average_drift_ms: json_f64(summary, "averageDriftMs")?,
+                    max_drift_ms: json_u64(summary, "maxDriftMs")?,
+                    queue_peak: json_u64(summary, "queuePeak")?,
+                });
             }
         }
 
@@ -420,10 +408,8 @@ fn load_benchmark_profile() -> Result<BenchmarkProfile, String> {
         if let Some(iterations) = analytics.iterations {
             profile.analytics_studio.iterations = iterations.max(1);
         }
-        if let Some(search_term) = analytics.search_term {
-            if !search_term.is_empty() {
-                profile.analytics_studio.search_term = search_term;
-            }
+        if let Some(search_term) = analytics.search_term && !search_term.is_empty() {
+            profile.analytics_studio.search_term = search_term;
         }
         if let Some(min_score) = analytics.min_score {
             profile.analytics_studio.min_score = min_score;
@@ -466,9 +452,11 @@ fn load_client_from_env(bundle_env: &str) -> Result<(JsRuntimePool, JsRuntimePoo
     let bundle_source = fs::read_to_string(&bundle_path)
         .map_err(|error| format!("failed to read bundle {bundle_path}: {error}"))?;
 
-    let mut options = JsRuntimeOptions::default();
-    options.permissions = vec!["fs".to_string()];
-    options.app_name = "Volt Headless Benchmark".to_string();
+    let options = JsRuntimeOptions {
+        permissions: vec!["fs".to_string()],
+        app_name: "Volt Headless Benchmark".to_string(),
+        ..JsRuntimeOptions::default()
+    };
 
     let pool = JsRuntimePool::start_with_options(2, options)?;
     let client = pool.client();
@@ -514,15 +502,11 @@ fn json_u64(value: &JsonValue, key: &str) -> Result<u64, String> {
     if let Some(number) = entry.as_u64() {
         return Ok(number);
     }
-    if let Some(number) = entry.as_i64() {
-        if number >= 0 {
-            return Ok(number as u64);
-        }
+    if let Some(number) = entry.as_i64() && number >= 0 {
+        return Ok(number as u64);
     }
-    if let Some(number) = entry.as_f64() {
-        if number.is_finite() && number >= 0.0 {
-            return Ok(number.round() as u64);
-        }
+    if let Some(number) = entry.as_f64() && number.is_finite() && number >= 0.0 {
+        return Ok(number.round() as u64);
     }
     Err(format!("field {key} is not a non-negative number"))
 }
