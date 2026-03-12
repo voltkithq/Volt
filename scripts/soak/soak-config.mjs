@@ -25,6 +25,9 @@ const TASKS = [
     name: 'rust-command-bridge-lifecycle',
     command: 'cargo',
     args: ['test', '-p', 'volt-core', 'command::tests::lifecycle_drop_clears_bridge'],
+    platformArgs: {
+      linux: ['test', '-p', 'volt-core', 'command::tests::command_metrics_track_failed_send'],
+    },
     p95MaxMsByPlatform: { linux: 15_000, darwin: 20_000, win32: 30_000 },
   },
   {
@@ -59,10 +62,10 @@ const TASKS = [
   },
 ];
 
-export function soakTasks() {
+export function soakTasks(platform = process.platform) {
   return TASKS.map((task) => ({
     ...task,
-    args: [...task.args],
+    args: [...(task.platformArgs?.[platform] ?? task.args)],
     p95MaxMsByPlatform: { ...task.p95MaxMsByPlatform },
   }));
 }
