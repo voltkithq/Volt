@@ -10,7 +10,7 @@
 
 Build desktop apps with TypeScript and web technologies, powered by a Rust runtime.
 
-If you know Electron, you already know Volt. Same API patterns (`ipcMain`, `BrowserWindow`, `Menu`, `Tray`, `dialog`, `clipboard`, `shell`) but with a Rust core instead of Chromium, capability-based permissions by default, and ~21 MB production binaries.
+Volt is a TypeScript-first desktop framework for teams that want a smaller, safer, more native stack than Electron without forcing app developers to write Rust. Main-process TypeScript handles orchestration, windows, plugins, and background workflows, while performance-sensitive work runs through Rust-backed Volt APIs.
 
 ## Quick Start
 
@@ -36,17 +36,31 @@ npm run package
 |---|---|---|---|
 | Runtime | Chromium + Node.js | Rust + system webview | Rust + system webview |
 | Binary size | ~150 MB+ | ~3-10 MB | ~21 MB |
-| Backend language | JavaScript | Rust | TypeScript (runs on a Rust JS engine) |
+| Backend language | JavaScript | Rust | TypeScript orchestration + Rust-backed APIs |
 | Learning curve | Low (all JS) | Steep (must write Rust) | Low (all TypeScript) |
 | Permission model | None by default | Capability config | Capability config |
-| API style | `require('electron')` | Rust commands | `import { ipcMain } from 'volt:ipc'` |
+| API style | `require('electron')` | Rust commands | `ipcMain`, `BrowserWindow`, `data`, `workflow` |
 
-Volt sits between Electron and Tauri. You get the small binary and native performance of a Rust-backed runtime without having to write any Rust yourself. Your backend code is TypeScript, running on Boa (a pure-Rust JS engine) in production.
+Volt sits between Electron and Tauri. You get Electron-style TypeScript app authoring with a Rust-backed runtime, capability-based permissions by default, and native fast paths for heavy operations. Volt is not trying to be a drop-in Electron replacement for arbitrary main-process JavaScript workloads.
+
+## What Volt Is
+
+- **TypeScript-first for app developers** -- frontend and backend code stay in TypeScript
+- **Rust-powered under the hood** -- heavy work can run through native Volt APIs without exposing Rust to app authors
+- **Orchestration-first in the main process** -- Boa runs lifecycle, IPC coordination, plugins, and background workflows
+- **Native-backed where it matters** -- use `data` and `workflow` APIs when work should not stay in interpreted JS
+
+## What Volt Is Not
+
+- **Not a full Electron compatibility layer** -- Volt keeps familiar patterns, but it does not aim to run every Electron/Node desktop package unchanged
+- **Not a “write Rust to do anything serious” framework** -- that is the tradeoff many teams want to avoid
+- **Not a general high-performance JS compute runtime** -- heavy main-process operations should use Volt's Rust-backed APIs
 
 ## What's Included
 
 - **Familiar APIs** -- `ipcMain.handle()`, `BrowserWindow`, `Menu`, `Tray`, `globalShortcut`, `dialog`, `clipboard`, `shell`, `nativeTheme`
 - **Capability-based permissions** -- declare what your app can access in `volt.config.ts`, everything else is denied
+- **Native-backed fast paths** -- `data` and `workflow` APIs for heavy queries and pipeline execution without writing Rust
 - **Built-in updater** -- Ed25519 signed updates with SHA-256 verification, no third-party services required
 - **Embedded SQLite** -- `volt:db` module for local storage without external dependencies
 - **Secure file access** -- scoped `volt:fs` module with path restrictions
@@ -62,7 +76,7 @@ Volt sits between Electron and Tauri. You get the small binary and native perfor
 
 ## Project Structure
 
-A Volt app has a frontend (any web framework) and a backend (`src/backend.ts`) that handles IPC:
+A Volt app has a frontend (any web framework) and a backend (`src/backend.ts`) that handles orchestration and IPC:
 
 ```
 my-app/
@@ -77,23 +91,29 @@ my-app/
 Example backend:
 
 ```typescript
-import { ipcMain } from 'volt:ipc';
-import * as db from 'volt:db';
+import { ipcMain } from 'voltkit';
 
 ipcMain.handle('get-users', async () => {
-  return db.query('SELECT * FROM users');
+  return [
+    { id: 1, name: 'Ada', role: 'admin' },
+    { id: 2, name: 'Linus', role: 'member' },
+  ];
 });
 ```
 
 Example frontend:
 
 ```typescript
-const users = await window.__volt__.invoke('get-users');
+import { data, invoke, workflow } from 'voltkit/renderer';
+
+const users = await invoke('get-users');
+const profile = await data.profile({ datasetSize: 12_000 });
+const result = await workflow.run({ batchSize: 3_000, passes: 3 });
 ```
 
 ## Status
 
-Pre-1.0 release (`0.1.x`). Core APIs are stable but may still evolve. Actively tested across Windows, macOS, and Linux in CI.
+Pre-1.0 release (`0.1.x`). Core APIs are stable enough to build against, but Volt is still defining its exact product boundaries. The current direction is clear: TypeScript-first app authoring, Rust-backed performance for heavy paths, and capability-based desktop APIs with a smaller footprint than Electron.
 
 ## Documentation
 
