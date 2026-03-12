@@ -53,7 +53,7 @@ Volt sits between Electron and Tauri. You get Electron-style TypeScript app auth
 ## What Volt Is Not
 
 - **Not a full Electron compatibility layer** -- Volt keeps familiar patterns, but it does not aim to run every Electron/Node desktop package unchanged
-- **Not a “write Rust to do anything serious” framework** -- that is the tradeoff many teams want to avoid
+- **Not a "write Rust to do anything serious" framework** -- that is the tradeoff many teams want to avoid
 - **Not a general high-performance JS compute runtime** -- heavy main-process operations should use Volt's Rust-backed APIs
 
 ## What's Included
