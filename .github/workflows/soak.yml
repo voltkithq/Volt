@@ -60,9 +60,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build TypeScript packages
+      - name: Build TypeScript dependency chain
         run: |
           pnpm --filter voltkit run build
+          pnpm --filter @voltkit/volt-test run build
           pnpm --filter @voltkit/volt-cli run build
 
       - name: Run soak harness
