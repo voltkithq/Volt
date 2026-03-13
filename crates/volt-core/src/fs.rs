@@ -1,6 +1,7 @@
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::time::UNIX_EPOCH;
 use thiserror::Error;
 
 use crate::security::validate_path;
@@ -134,16 +135,38 @@ pub fn read_dir(base: &Path, path: &str) -> Result<Vec<String>, FsError> {
     Ok(entries)
 }
 
-/// Get metadata (size, is_file, is_dir) for a path.
+/// Get metadata for a path.
 pub fn stat(base: &Path, path: &str) -> Result<FileInfo, FsError> {
     let resolved = safe_resolve(base, path)?;
     let meta = fs::metadata(resolved)?;
+
+    let modified_ms = meta
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .map(|d| d.as_secs_f64() * 1000.0)
+        .unwrap_or(0.0);
+
+    let created_ms = meta
+        .created()
+        .ok()
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .map(|d| d.as_secs_f64() * 1000.0);
+
     Ok(FileInfo {
         size: meta.len(),
         is_file: meta.is_file(),
         is_dir: meta.is_dir(),
         readonly: meta.permissions().readonly(),
+        modified_ms,
+        created_ms,
     })
+}
+
+/// Check whether a path exists within the scoped base directory.
+pub fn exists(base: &Path, path: &str) -> Result<bool, FsError> {
+    let resolved = safe_resolve(base, path)?;
+    Ok(resolved.exists())
 }
 
 /// File metadata info returned by stat().
@@ -153,6 +176,11 @@ pub struct FileInfo {
     pub is_file: bool,
     pub is_dir: bool,
     pub readonly: bool,
+    /// Last modification time as milliseconds since Unix epoch.
+    pub modified_ms: f64,
+    /// Creation time as milliseconds since Unix epoch.
+    /// `None` on platforms/filesystems that do not support birth time.
+    pub created_ms: Option<f64>,
 }
 
 /// Create a directory (and parents if needed).
@@ -180,6 +208,60 @@ pub fn remove(base: &Path, path: &str) -> Result<(), FsError> {
     } else {
         Ok(fs::remove_file(resolved)?)
     }
+}
+
+/// Rename (move) a file or directory within the scope.
+/// Both `from` and `to` must be within the base scope.
+/// Uses `std::fs::rename` which is atomic on same-filesystem.
+pub fn rename(base: &Path, from: &str, to: &str) -> Result<(), FsError> {
+    let resolved_from = safe_resolve(base, from)?;
+    let resolved_to = safe_resolve_for_create(base, to)?;
+
+    if !resolved_from.exists() {
+        return Err(FsError::Io(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("source path does not exist: {from}"),
+        )));
+    }
+
+    if resolved_to.exists() {
+        return Err(FsError::Security(format!(
+            "FS_ALREADY_EXISTS: destination already exists: {to}"
+        )));
+    }
+
+    fs::rename(resolved_from, resolved_to)?;
+    Ok(())
+}
+
+/// Copy a file within the scope.
+/// Both `from` and `to` must be within the base scope.
+/// Only files can be copied; use mkdir + recursive copy for directories.
+pub fn copy(base: &Path, from: &str, to: &str) -> Result<(), FsError> {
+    let resolved_from = safe_resolve(base, from)?;
+    let resolved_to = safe_resolve_for_create(base, to)?;
+
+    if !resolved_from.exists() {
+        return Err(FsError::Io(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("source path does not exist: {from}"),
+        )));
+    }
+
+    if !resolved_from.is_file() {
+        return Err(FsError::Security(
+            "copy only supports files, not directories".to_string(),
+        ));
+    }
+
+    if resolved_to.exists() {
+        return Err(FsError::Security(format!(
+            "FS_ALREADY_EXISTS: destination already exists: {to}"
+        )));
+    }
+
+    fs::copy(resolved_from, resolved_to)?;
+    Ok(())
 }
 
 fn ensure_scoped_directory(base: &Path, directory: &Path) -> Result<(), FsError> {
@@ -448,5 +530,182 @@ mod tests {
         assert!(base.exists());
 
         let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn test_stat_returns_timestamps() {
+        let base = env::temp_dir();
+        let file = "volt_test_stat_timestamps.txt";
+        write_file(&base, file, b"timestamp test").unwrap();
+
+        let info = stat(&base, file).unwrap();
+        assert!(info.modified_ms > 0.0, "modified_ms should be positive");
+        // created_ms may be None on some Linux filesystems, but should be
+        // Some on Windows and macOS.
+        #[cfg(any(target_os = "windows", target_os = "macos"))]
+        assert!(info.created_ms.is_some(), "created_ms should be available");
+
+        // Clean up
+        remove(&base, file).unwrap();
+    }
+
+    #[test]
+    fn test_exists_returns_true_for_existing_file() {
+        let base = env::temp_dir();
+        let file = "volt_test_exists_true.txt";
+        write_file(&base, file, b"exists").unwrap();
+
+        assert!(exists(&base, file).unwrap());
+
+        // Clean up
+        remove(&base, file).unwrap();
+    }
+
+    #[test]
+    fn test_exists_returns_false_for_missing_file() {
+        let base = env::temp_dir();
+        assert!(!exists(&base, "volt_test_exists_missing_12345.txt").unwrap());
+    }
+
+    #[test]
+    fn test_exists_rejects_traversal() {
+        let base = env::temp_dir();
+        assert!(exists(&base, "../../etc/passwd").is_err());
+    }
+
+    #[test]
+    fn test_rename_file() {
+        let base = env::temp_dir();
+        let from = "volt_test_rename_from.txt";
+        let to = "volt_test_rename_to.txt";
+        write_file(&base, from, b"rename me").unwrap();
+
+        rename(&base, from, to).unwrap();
+
+        assert!(!exists(&base, from).unwrap());
+        assert!(exists(&base, to).unwrap());
+        let content = read_file_text(&base, to).unwrap();
+        assert_eq!(content, "rename me");
+
+        remove(&base, to).unwrap();
+    }
+
+    #[test]
+    fn test_rename_rejects_missing_source() {
+        let base = env::temp_dir();
+        let result = rename(&base, "volt_test_rename_missing.txt", "volt_test_rename_dest.txt");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_rename_rejects_existing_destination() {
+        let base = env::temp_dir();
+        let from = "volt_test_rename_conflict_from.txt";
+        let to = "volt_test_rename_conflict_to.txt";
+        write_file(&base, from, b"source").unwrap();
+        write_file(&base, to, b"dest").unwrap();
+
+        let result = rename(&base, from, to);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("FS_ALREADY_EXISTS"));
+
+        remove(&base, from).unwrap();
+        remove(&base, to).unwrap();
+    }
+
+    #[test]
+    fn test_rename_directory() {
+        let base = env::temp_dir();
+        let from_dir = "volt_test_rename_dir_from";
+        let to_dir = "volt_test_rename_dir_to";
+        mkdir(&base, from_dir).unwrap();
+        write_file(&base, &format!("{from_dir}/file.txt"), b"inside").unwrap();
+
+        rename(&base, from_dir, to_dir).unwrap();
+
+        assert!(!exists(&base, from_dir).unwrap());
+        assert!(exists(&base, to_dir).unwrap());
+        let content = read_file_text(&base, &format!("{to_dir}/file.txt")).unwrap();
+        assert_eq!(content, "inside");
+
+        remove(&base, to_dir).unwrap();
+    }
+
+    #[test]
+    fn test_copy_file() {
+        let base = env::temp_dir();
+        let from = "volt_test_copy_from.txt";
+        let to = "volt_test_copy_to.txt";
+        write_file(&base, from, b"copy me").unwrap();
+
+        copy(&base, from, to).unwrap();
+
+        assert!(exists(&base, from).unwrap());
+        assert!(exists(&base, to).unwrap());
+        let content = read_file_text(&base, to).unwrap();
+        assert_eq!(content, "copy me");
+
+        remove(&base, from).unwrap();
+        remove(&base, to).unwrap();
+    }
+
+    #[test]
+    fn test_copy_rejects_missing_source() {
+        let base = env::temp_dir();
+        let result = copy(&base, "volt_test_copy_missing.txt", "volt_test_copy_dest.txt");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_copy_rejects_directory() {
+        let base = env::temp_dir();
+        let dir = "volt_test_copy_dir_reject";
+        mkdir(&base, dir).unwrap();
+
+        let result = copy(&base, dir, "volt_test_copy_dir_dest");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("files, not directories"));
+
+        remove(&base, dir).unwrap();
+    }
+
+    #[test]
+    fn test_copy_rejects_existing_destination() {
+        let base = env::temp_dir();
+        let from = "volt_test_copy_conflict_from.txt";
+        let to = "volt_test_copy_conflict_to.txt";
+        write_file(&base, from, b"source").unwrap();
+        write_file(&base, to, b"dest").unwrap();
+
+        let result = copy(&base, from, to);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("FS_ALREADY_EXISTS"));
+
+        remove(&base, from).unwrap();
+        remove(&base, to).unwrap();
+    }
+
+    #[test]
+    fn test_rename_rejects_traversal() {
+        let base = env::temp_dir();
+        let from = "volt_test_rename_trav.txt";
+        write_file(&base, from, b"data").unwrap();
+
+        assert!(rename(&base, from, "../../etc/evil.txt").is_err());
+        assert!(rename(&base, "../../etc/passwd", "stolen.txt").is_err());
+
+        remove(&base, from).unwrap();
+    }
+
+    #[test]
+    fn test_copy_rejects_traversal() {
+        let base = env::temp_dir();
+        let from = "volt_test_copy_trav.txt";
+        write_file(&base, from, b"data").unwrap();
+
+        assert!(copy(&base, from, "../../etc/evil.txt").is_err());
+        assert!(copy(&base, "../../etc/passwd", "stolen.txt").is_err());
+
+        remove(&base, from).unwrap();
     }
 }

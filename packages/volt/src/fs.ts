@@ -13,8 +13,15 @@ import {
   fsWriteFile,
   fsReadDir,
   fsStat,
+  fsExists,
   fsMkdir,
   fsRemove,
+  fsResolveGrant,
+  fsRename,
+  fsCopy,
+  fsWatchStart,
+  fsWatchPoll,
+  fsWatchClose,
 } from '@voltkit/volt-native';
 
 /** File metadata returned by stat(). */
@@ -27,6 +34,38 @@ export interface FileInfo {
   isDir: boolean;
   /** Whether the file is read-only. */
   readonly: boolean;
+  /** Last modification time as milliseconds since Unix epoch. */
+  modifiedMs: number;
+  /** Creation time as milliseconds since Unix epoch, or null if unavailable. */
+  createdMs: number | null;
+}
+
+/** A file system watch event. */
+export interface WatchEvent {
+  /** Event kind. */
+  kind: 'create' | 'change' | 'delete' | 'rename' | 'overflow';
+  /** Scope-relative path of the affected file/directory. */
+  path: string;
+  /** For rename events, the old scope-relative path (if available). */
+  oldPath?: string;
+  /** Whether the event target is a directory. */
+  isDir?: boolean;
+}
+
+/** Options for starting a file watcher. */
+export interface WatchOptions {
+  /** Watch subdirectories recursively. Defaults to true. */
+  recursive?: boolean;
+  /** Debounce interval in milliseconds. Defaults to 200. */
+  debounceMs?: number;
+}
+
+/** A file watcher handle. Call poll() to retrieve events, close() to stop watching. */
+export interface FileWatcher {
+  /** Drain all pending events since the last poll. */
+  poll(): Promise<WatchEvent[]>;
+  /** Stop watching and release resources. */
+  close(): Promise<void>;
 }
 
 /**
@@ -92,7 +131,22 @@ async function stat(path: string): Promise<FileInfo> {
     isFile: info.isFile,
     isDir: info.isDir,
     readonly: info.readonly,
+    modifiedMs: info.modifiedMs,
+    createdMs: info.createdMs ?? null,
   };
+}
+
+/**
+ * Check whether a path exists within the app scope.
+ *
+ * @example
+ * ```ts
+ * if (await fs.exists('data/config.json')) { ... }
+ * ```
+ */
+async function exists(path: string): Promise<boolean> {
+  validatePath(path);
+  return fsExists(baseDir, path);
 }
 
 /** Create a directory (and parent directories if needed). */
@@ -134,6 +188,159 @@ function validatePath(path: string): void {
   }
 }
 
+/** A scoped file handle bound to a grant. */
+export interface ScopedFs {
+  readFile(path: string): Promise<string>;
+  readFileBinary(path: string): Promise<Uint8Array>;
+  readDir(path: string): Promise<string[]>;
+  stat(path: string): Promise<FileInfo>;
+  exists(path: string): Promise<boolean>;
+  writeFile(path: string, data: string): Promise<void>;
+  writeFileBinary(path: string, data: Uint8Array): Promise<void>;
+  mkdir(path: string): Promise<void>;
+  remove(path: string): Promise<void>;
+  rename(from: string, to: string): Promise<void>;
+  copy(from: string, to: string): Promise<void>;
+  watch(subpath: string, options?: WatchOptions): Promise<FileWatcher>;
+}
+
+/**
+ * Bind a filesystem scope grant to create a scoped handle.
+ * The grant must have been created by a `showOpenDialog({ grantFsScope: true })` call.
+ *
+ * @example
+ * ```ts
+ * import { bindScope } from 'voltkit';
+ * const scopedFs = await bindScope(grantId);
+ * const entries = await scopedFs.readDir('');
+ * await scopedFs.writeFile('notes/new.md', '# New Note');
+ * ```
+ */
+async function bindScope(grantId: string): Promise<ScopedFs> {
+  if (!grantId || typeof grantId !== 'string') {
+    throw new Error('FS_SCOPE_INVALID: grant ID must be a non-empty string');
+  }
+
+  const grantBasePath = resolveGrantPath(grantId);
+
+  return {
+    async readFile(path: string): Promise<string> {
+      validatePath(path);
+      return fsReadFileText(grantBasePath, path);
+    },
+    async readFileBinary(path: string): Promise<Uint8Array> {
+      validatePath(path);
+      const buf = fsReadFile(grantBasePath, path);
+      return new Uint8Array(buf);
+    },
+    async readDir(path: string): Promise<string[]> {
+      validateScopedPath(path);
+      return fsReadDir(grantBasePath, path);
+    },
+    async stat(path: string): Promise<FileInfo> {
+      validateScopedPath(path);
+      const info = fsStat(grantBasePath, path);
+      return {
+        size: info.size,
+        isFile: info.isFile,
+        isDir: info.isDir,
+        readonly: info.readonly,
+        modifiedMs: info.modifiedMs,
+        createdMs: info.createdMs ?? null,
+      };
+    },
+    async exists(path: string): Promise<boolean> {
+      validateScopedPath(path);
+      return fsExists(grantBasePath, path);
+    },
+    async writeFile(path: string, data: string): Promise<void> {
+      validatePath(path);
+      fsWriteFile(grantBasePath, path, Buffer.from(data, 'utf-8'));
+    },
+    async writeFileBinary(path: string, data: Uint8Array): Promise<void> {
+      validatePath(path);
+      fsWriteFile(grantBasePath, path, Buffer.from(data));
+    },
+    async mkdir(path: string): Promise<void> {
+      validatePath(path);
+      fsMkdir(grantBasePath, path);
+    },
+    async remove(path: string): Promise<void> {
+      validatePath(path);
+      fsRemove(grantBasePath, path);
+    },
+    async rename(from: string, to: string): Promise<void> {
+      validatePath(from);
+      validatePath(to);
+      fsRename(grantBasePath, from, to);
+    },
+    async copy(from: string, to: string): Promise<void> {
+      validatePath(from);
+      validatePath(to);
+      fsCopy(grantBasePath, from, to);
+    },
+    async watch(subpath: string, options?: WatchOptions): Promise<FileWatcher> {
+      validateScopedPath(subpath);
+      const recursive = options?.recursive ?? true;
+      const debounceMs = options?.debounceMs ?? 200;
+      const watcherId = fsWatchStart(grantBasePath, subpath, recursive, debounceMs);
+      return {
+        async poll(): Promise<WatchEvent[]> {
+          return fsWatchPoll(watcherId) as WatchEvent[];
+        },
+        async close(): Promise<void> {
+          fsWatchClose(watcherId);
+        },
+      };
+    },
+  };
+}
+
+/**
+ * Resolve a grant ID to its root path using the native grant store.
+ * Throws if the grant is invalid or expired.
+ */
+function resolveGrantPath(grantId: string): string {
+  // The native grant store is in Rust. We need a way to look up the path.
+  // For the N-API layer, we use a dedicated native function.
+  return fsResolveGrant(grantId);
+}
+
+/**
+ * Validate a scoped path. Unlike validatePath, this allows empty strings
+ * (to reference the scope root directory itself for readDir/stat/exists).
+ */
+function validateScopedPath(path: string): void {
+  if (path === '') return; // empty = scope root, valid for readDir/stat/exists
+  validatePath(path);
+}
+
+/**
+ * Watch a directory for file changes within the app scope.
+ *
+ * @example
+ * ```ts
+ * const watcher = await fs.watch('data', { recursive: true });
+ * // Later...
+ * const events = await watcher.poll();
+ * await watcher.close();
+ * ```
+ */
+async function watch(path: string, options?: WatchOptions): Promise<FileWatcher> {
+  validatePath(path);
+  const recursive = options?.recursive ?? true;
+  const debounceMs = options?.debounceMs ?? 200;
+  const watcherId = fsWatchStart(baseDir, path, recursive, debounceMs);
+  return {
+    async poll(): Promise<WatchEvent[]> {
+      return fsWatchPoll(watcherId) as WatchEvent[];
+    },
+    async close(): Promise<void> {
+      fsWatchClose(watcherId);
+    },
+  };
+}
+
 /** Sandboxed file system APIs. Requires `permissions: ['fs']` in volt.config.ts. */
 export const fs = {
   readFile,
@@ -142,6 +349,9 @@ export const fs = {
   writeFileBinary,
   readDir,
   stat,
+  exists,
   mkdir,
   remove,
+  bindScope,
+  watch,
 };

@@ -5,6 +5,7 @@ pub mod dialog;
 pub mod embed;
 pub mod fs;
 pub mod global_shortcut;
+pub mod grant_store;
 pub mod ipc;
 pub mod menu;
 pub mod notification;
@@ -13,6 +14,7 @@ pub mod security;
 pub mod shell;
 pub mod tray;
 pub mod updater;
+pub mod watcher;
 pub mod webview;
 pub mod window;
 

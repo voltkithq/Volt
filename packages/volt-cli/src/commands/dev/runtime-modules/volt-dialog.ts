@@ -15,6 +15,11 @@ interface MessageDialogOptions {
   buttons?: string[];
 }
 
+interface GrantDialogResult {
+  paths: string[];
+  grantIds: string[];
+}
+
 export async function showOpen(options: DialogOptions = {}): Promise<string | null> {
   const result = await dialog.showOpenDialog({
     title: options.title,
@@ -49,5 +54,24 @@ export async function showMessage(options: MessageDialogOptions): Promise<0 | 1>
     buttons: options.buttons,
   });
   return result.confirmed ? 1 : 0;
+}
+
+export async function showOpenWithGrant(
+  options: DialogOptions = {},
+): Promise<GrantDialogResult> {
+  const result = await dialog.showOpenDialog({
+    title: options.title,
+    defaultPath: options.defaultPath,
+    filters: options.filters,
+    directory: true,
+    grantFsScope: true,
+  });
+  if (result.canceled || !result.scopeGrants) {
+    return { paths: [], grantIds: [] };
+  }
+  return {
+    paths: result.filePaths,
+    grantIds: result.scopeGrants.map((g) => g.id),
+  };
 }
 

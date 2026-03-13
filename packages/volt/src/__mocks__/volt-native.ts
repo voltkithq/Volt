@@ -104,6 +104,12 @@ export const dialogShowSave = vi.fn(
 export const dialogShowMessage = vi.fn(
   (_options: NativeMessageDialogOptions) => true,
 );
+export const dialogShowOpenWithGrant = vi.fn(
+  (_options: NativeOpenDialogOptions) => ({
+    paths: ['/mock/workspace'],
+    grantIds: ['mock_grant_001'],
+  }),
+);
 
 // ── File System ────────────────────────────────────────────────────────
 
@@ -125,10 +131,28 @@ export const fsStat = vi.fn(
     isFile: true,
     isDir: false,
     readonly: false,
+    modifiedMs: 1700000000000,
+    createdMs: 1699000000000,
   }),
+);
+export const fsExists = vi.fn(
+  (_baseDir: string, _path: string) => true,
 );
 export const fsMkdir = vi.fn((_baseDir: string, _path: string) => {});
 export const fsRemove = vi.fn((_baseDir: string, _path: string) => {});
+export const fsRename = vi.fn((_baseDir: string, _from: string, _to: string) => {});
+export const fsCopy = vi.fn((_baseDir: string, _from: string, _to: string) => {});
+export const fsResolveGrant = vi.fn(
+  (_grantId: string) => '/mock/grant/path',
+);
+
+let _mockWatcherCounter = 0;
+export const fsWatchStart = vi.fn(
+  (_baseDir: string, _subpath: string, _recursive: boolean, _debounceMs: number) =>
+    `mock_watcher_${++_mockWatcherCounter}`,
+);
+export const fsWatchPoll = vi.fn((_watcherId: string) => [] as unknown[]);
+export const fsWatchClose = vi.fn((_watcherId: string) => {});
 
 // ── Shell ──────────────────────────────────────────────────────────────
 

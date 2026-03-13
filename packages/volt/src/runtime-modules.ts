@@ -136,18 +136,79 @@ declare module 'volt:dialog' {
     buttons?: string[];
   }
 
+  export interface GrantDialogResult {
+    paths: string[];
+    grantIds: string[];
+  }
+
   export function showOpen(options?: OpenDialogOptions): Promise<string | null>;
   export function showSave(options?: SaveDialogOptions): Promise<string | null>;
   export function showMessage(options: MessageDialogOptions): Promise<0 | 1>;
+  export function showOpenWithGrant(options?: OpenDialogOptions): Promise<GrantDialogResult>;
 }
 
 declare module 'volt:fs' {
+  export interface FileInfo {
+    size: number;
+    isFile: boolean;
+    isDir: boolean;
+    readonly: boolean;
+    modifiedMs: number;
+    createdMs: number | null;
+  }
+
+  /** A scoped file handle bound to a grant. */
+  export interface ScopedFs {
+    readFile(path: string): Promise<string>;
+    readFileBinary(path: string): Promise<Uint8Array>;
+    readDir(path: string): Promise<string[]>;
+    stat(path: string): Promise<FileInfo>;
+    exists(path: string): Promise<boolean>;
+    writeFile(path: string, data: string): Promise<void>;
+    writeFileBinary(path: string, data: Uint8Array): Promise<void>;
+    mkdir(path: string): Promise<void>;
+    remove(path: string): Promise<void>;
+    rename(from: string, to: string): Promise<void>;
+    copy(from: string, to: string): Promise<void>;
+  }
+
   export function readFile(path: string): Promise<string>;
   export function writeFile(path: string, data: string): Promise<void>;
   export function readDir(path: string): Promise<string[]>;
+  export function stat(path: string): Promise<FileInfo>;
   export function exists(path: string): Promise<boolean>;
   export function mkdir(path: string): Promise<void>;
   export function remove(path: string): Promise<void>;
+
+  /** Validate a grant and bind a scoped read-only handle. */
+  export function bindScope(grantId: string): Promise<string>;
+
+  /** Scoped read operations — use the grant ID from bindScope(). */
+  export function scopedReadFile(grantId: string, path: string): Promise<string>;
+  export function scopedReadFileBinary(grantId: string, path: string): Promise<Uint8Array>;
+  export function scopedReadDir(grantId: string, path: string): Promise<string[]>;
+  export function scopedStat(grantId: string, path: string): Promise<FileInfo>;
+  export function scopedExists(grantId: string, path: string): Promise<boolean>;
+
+  /** Scoped write operations — use the grant ID from bindScope(). */
+  export function scopedWriteFile(grantId: string, path: string, data: string): Promise<void>;
+  export function scopedMkdir(grantId: string, path: string): Promise<void>;
+  export function scopedRemove(grantId: string, path: string): Promise<void>;
+  export function scopedRename(grantId: string, from: string, to: string): Promise<void>;
+  export function scopedCopy(grantId: string, from: string, to: string): Promise<void>;
+
+  /** Watch operations. */
+  export function watchStart(path: string, recursive: boolean, debounceMs: number): Promise<string>;
+  export function watchPoll(watcherId: string): Promise<unknown[]>;
+  export function watchClose(watcherId: string): Promise<void>;
+  export function scopedWatchStart(
+    grantId: string,
+    subpath: string,
+    recursive: boolean,
+    debounceMs: number,
+  ): Promise<string>;
+  export function scopedWatchPoll(watcherId: string): Promise<unknown[]>;
+  export function scopedWatchClose(watcherId: string): Promise<void>;
 }
 
 declare module 'volt:http' {
