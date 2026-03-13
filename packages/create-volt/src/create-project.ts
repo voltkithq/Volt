@@ -7,6 +7,14 @@ import { escapeHtml, ProjectOptions } from './options.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
+function detectPackageManager(): { name: string; run: string; exec: string; install: string } {
+  const ua = process.env.npm_config_user_agent ?? '';
+  if (ua.startsWith('pnpm')) return { name: 'pnpm', run: 'pnpm', exec: 'pnpm exec', install: 'pnpm install' };
+  if (ua.startsWith('yarn')) return { name: 'yarn', run: 'yarn', exec: 'yarn', install: 'yarn' };
+  if (ua.startsWith('bun')) return { name: 'bun', run: 'bun run', exec: 'bunx', install: 'bun install' };
+  return { name: 'npm', run: 'npm run', exec: 'npx', install: 'npm install' };
+}
+
 export async function createProject(options: ProjectOptions): Promise<void> {
   const targetDir = resolve(process.cwd(), options.name);
 
@@ -49,10 +57,14 @@ export async function createProject(options: ProjectOptions): Promise<void> {
     writeFileSync(htmlPath, html);
   }
 
+  const pm = detectPackageManager();
+
   console.log('  Done! Next steps:');
   console.log();
   console.log(`  cd ${options.name}`);
-  console.log('  npm install');
-  console.log('  npm run dev');
+  console.log(`  ${pm.install}`);
+  console.log(`  ${pm.run} dev`);
+  console.log();
+  console.log(`  Optional: run \`${pm.run} doctor\` to verify your environment.`);
   console.log();
 }
