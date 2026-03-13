@@ -3,6 +3,7 @@ import { resolveSigningConfig, isToolAvailable } from '../../utils/signing.js';
 import { normalizePackagePlatform } from '../../utils/runtime-artifact.js';
 import { parsePackageConfig, validateRequestedPackageFormat } from '../package/config.js';
 import type { PackageConfig } from '../package/types.js';
+import { runBuildPreflight, runPackagePreflight } from '../../utils/preflight.js';
 
 export interface DoctorOptions {
   target?: string;
@@ -65,6 +66,30 @@ export async function doctorCommand(options: DoctorOptions): Promise<void> {
       env: process.env,
     },
   );
+
+  // Also run the shared preflight checks and merge results
+  const buildPreflight = runBuildPreflight(cwd, config, { target: options.target });
+  for (const error of buildPreflight.errors) {
+    if (!checks.some((c) => c.id === error.id)) {
+      checks.push({
+        id: error.id,
+        status: 'fail',
+        title: error.message,
+        details: error.fix ?? '',
+      });
+    }
+  }
+  const packagePreflight = runPackagePreflight(cwd, platform, { format: requestedFormat });
+  for (const error of packagePreflight.errors) {
+    if (!checks.some((c) => c.id === error.id)) {
+      checks.push({
+        id: error.id,
+        status: 'fail',
+        title: error.message,
+        details: error.fix ?? '',
+      });
+    }
+  }
   const report: DoctorReport = {
     target: platform,
     formats,

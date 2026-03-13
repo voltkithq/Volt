@@ -1,4 +1,4 @@
-import { resolve, extname } from 'node:path';
+import { dirname, resolve, extname } from 'node:path';
 import { chmodSync, copyFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { signMacOS, signWindows } from '../../utils/signing.js';
 import type { SigningArtifactResult } from '../../utils/signing.js';
@@ -55,8 +55,7 @@ export async function packageWindows(
 
       const additionalFiles: string[] = [];
       if (updaterHelperFileName) additionalFiles.push(updaterHelperFileName);
-      // Include sidecar files if present (pre-built runner mode)
-      for (const sidecar of ['volt-assets.bin', 'volt-backend.js', 'volt-config.json']) {
+      for (const sidecar of SIDECAR_FILES) {
         if (existsSync(resolve(distDir, sidecar))) {
           additionalFiles.push(sidecar);
         }
@@ -109,6 +108,7 @@ export async function packageWindows(
 
       const appExecutablePath = resolve(stagingDir, runtimeArtifact.fileName);
       copyFileSync(runtimeArtifact.absolutePath, appExecutablePath);
+      copySidecarFiles(distDir, stagingDir);
 
       if (updaterHelperFileName) {
         const helperPath = resolve(distDir, updaterHelperFileName);
@@ -198,6 +198,7 @@ export async function packageMacOS(
       const destBinary = resolve(macosDir, binaryName);
       copyFileSync(runtimeArtifact.absolutePath, destBinary);
       chmodSync(destBinary, 0o755);
+      copySidecarFiles(dirname(runtimeArtifact.absolutePath), macosDir);
 
       if (config.icon && existsSync(config.icon)) {
         copyFileSync(config.icon, resolve(resourcesDir, 'icon.png'));
@@ -268,6 +269,7 @@ export async function packageLinux(
       const destBinary = resolve(usrBinDir, binaryName);
       copyFileSync(runtimeArtifact.absolutePath, destBinary);
       chmodSync(destBinary, 0o755);
+      copySidecarFiles(dirname(runtimeArtifact.absolutePath), usrBinDir);
 
       const desktopEntry = generateDesktopFile(appName, binaryName, config, 'AppRun');
       writeFileSync(resolve(appDirPath, `${binaryName}.desktop`), desktopEntry);
@@ -309,6 +311,7 @@ export async function packageLinux(
       const destBinary = resolve(debBinDir, binaryName);
       copyFileSync(runtimeArtifact.absolutePath, destBinary);
       chmodSync(destBinary, 0o755);
+      copySidecarFiles(dirname(runtimeArtifact.absolutePath), debBinDir);
 
       const control = [
         `Package: ${binaryName}`,
@@ -345,6 +348,21 @@ export async function packageLinux(
   }
 
   return missingTools;
+}
+
+const SIDECAR_FILES = ['volt-assets.bin', 'volt-backend.js', 'volt-config.json'] as const;
+
+/**
+ * Copy sidecar files from the build output to a packaging target directory.
+ * These files are present when the app was built with a pre-built runner.
+ */
+function copySidecarFiles(sourceDir: string, targetDir: string): void {
+  for (const sidecar of SIDECAR_FILES) {
+    const srcPath = resolve(sourceDir, sidecar);
+    if (existsSync(srcPath)) {
+      copyFileSync(srcPath, resolve(targetDir, sidecar));
+    }
+  }
 }
 
 interface MsixAssetPaths {

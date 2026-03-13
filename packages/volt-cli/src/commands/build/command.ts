@@ -181,10 +181,8 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
   }
 
   // ── Try pre-built runner (skips Cargo entirely) ─────────────────────
-  const cliVersion = config.version ?? '0.1.0';
   const prebuiltCacheDir = resolve(cwd, '.volt-tmp', 'prebuilt-runners');
   const prebuiltRunner = await resolvePrebuiltRunner({
-    version: cliVersion,
     platform: buildPlatform,
     arch: process.arch,
     cacheDir: prebuiltCacheDir,

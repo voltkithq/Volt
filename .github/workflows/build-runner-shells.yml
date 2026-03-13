@@ -74,18 +74,25 @@ jobs:
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
 
-      - name: Rename artifact
+      - name: Rename artifact and compute checksum
         shell: bash
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
           SOURCE="target/${{ matrix.target }}/release/${{ matrix.artifact }}"
           EXT=""
           if [[ "${{ matrix.artifact }}" == *.exe ]]; then
             EXT=".exe"
           fi
-          DEST="volt-runner-${VERSION}-${{ matrix.target }}${EXT}"
+          DEST="volt-runner-${{ matrix.target }}${EXT}"
           cp "$SOURCE" "$DEST"
           echo "ARTIFACT_PATH=$DEST" >> "$GITHUB_ENV"
+          echo "ARTIFACT_NAME=$DEST" >> "$GITHUB_ENV"
+
+          # Compute SHA-256 checksum
+          if command -v sha256sum &>/dev/null; then
+            sha256sum "$DEST" > "${DEST}.sha256"
+          else
+            shasum -a 256 "$DEST" > "${DEST}.sha256"
+          fi
 
       - name: Upload release asset
         if: github.event_name == 'release'
@@ -93,9 +100,41 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release upload "${{ github.ref_name }}" "${{ env.ARTIFACT_PATH }}" --clobber
 
+      - name: Upload checksum
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ github.ref_name }}" "${{ env.ARTIFACT_PATH }}.sha256" --clobber
+
       - name: Upload workflow artifact
         if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
           name: volt-runner-${{ matrix.target }}
-          path: ${{ env.ARTIFACT_PATH }}
+          path: |
+            ${{ env.ARTIFACT_PATH }}
+            ${{ env.ARTIFACT_PATH }}.sha256
+
+  checksums:
+    needs: build
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all checksum files
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.ref_name }}"
+          mkdir checksums
+          cd checksums
+          # Download individual checksum files and merge into one manifest
+          for asset in $(gh release view "$TAG" --repo "${{ github.repository }}" --json assets -q '.assets[].name' | grep '\.sha256$'); do
+            gh release download "$TAG" --repo "${{ github.repository }}" --pattern "$asset" --dir .
+            cat "$asset" >> volt-runner-checksums.sha256
+          done
+
+      - name: Upload combined checksum manifest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.ref_name }}" checksums/volt-runner-checksums.sha256 --clobber --repo "${{ github.repository }}"
