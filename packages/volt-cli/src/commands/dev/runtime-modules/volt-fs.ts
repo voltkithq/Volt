@@ -29,11 +29,10 @@ export async function remove(path: string): Promise<void> {
   await frameworkFs.remove(path);
 }
 
-export async function bindScope(grantId: string): Promise<string> {
+export async function bindScope(grantId: string): Promise<ScopedFs> {
   const scopedFs = await frameworkFs.bindScope(grantId);
-  // In dev mode, store the scoped handle and return the grant ID
   devScopedHandles.set(grantId, scopedFs);
-  return grantId;
+  return scopedFs;
 }
 
 // Dev-mode store for scoped handles

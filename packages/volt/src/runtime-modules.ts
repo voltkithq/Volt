@@ -180,8 +180,8 @@ declare module 'volt:fs' {
   export function mkdir(path: string): Promise<void>;
   export function remove(path: string): Promise<void>;
 
-  /** Validate a grant and bind a scoped read-only handle. */
-  export function bindScope(grantId: string): Promise<string>;
+  /** Validate a grant and return a scoped filesystem handle. */
+  export function bindScope(grantId: string): Promise<ScopedFs>;
 
   /** Scoped read operations — use the grant ID from bindScope(). */
   export function scopedReadFile(grantId: string, path: string): Promise<string>;

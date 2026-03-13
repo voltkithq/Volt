@@ -1,4 +1,9 @@
-use boa_engine::{Context, IntoJsFunctionCopied, JsValue, Module};
+use std::rc::Rc;
+
+use boa_engine::native_function::NativeFunction;
+use boa_engine::object::ObjectInitializer;
+use boa_engine::property::Attribute;
+use boa_engine::{Context, IntoJsFunctionCopied, JsArgs, JsResult, JsValue, Module, js_string};
 use volt_core::fs;
 use volt_core::grant_store;
 use volt_core::permissions::Permission;
@@ -89,15 +94,77 @@ fn remove(path: String, context: &mut Context) -> JsValue {
     promise_from_result(context, result).into()
 }
 
+/// Helper to extract argument N as a String from JsValue args.
+fn arg_string(args: &[JsValue], index: usize, context: &mut Context) -> JsResult<String> {
+    args.get_or_undefined(index)
+        .to_string(context)
+        .map(|s| s.to_std_string_escaped())
+}
+
 fn bind_scope(grant_id: String, context: &mut Context) -> JsValue {
-    let result = (|| {
+    let result = (|| -> Result<JsValue, String> {
         require_permission(Permission::FileSystem).map_err(super::format_js_error)?;
         grant_store::resolve_grant(&grant_id)
             .map_err(|error| format!("{error}"))?;
-        Ok(grant_id)
+
+        let gid: Rc<str> = Rc::from(grant_id.as_str());
+
+        // Each method closure captures the grant ID via Rc<str> (which is Copy-friendly via clone)
+        // SAFETY: These closures capture Rc<str> which is not Copy but is safe to use
+        // in Boa's single-threaded JS context. The closures do not outlive the context.
+        let make_method = |gid: Rc<str>, f: fn(String, String, &mut Context) -> JsValue| {
+            let gid = gid.clone();
+            unsafe {
+                NativeFunction::from_closure(move |_this, args, ctx| {
+                    let path = arg_string(args, 0, ctx)?;
+                    Ok(f(gid.to_string(), path, ctx))
+                })
+            }
+        };
+
+        let make_method2 = |gid: Rc<str>, f: fn(String, String, String, &mut Context) -> JsValue| {
+            let gid = gid.clone();
+            unsafe {
+                NativeFunction::from_closure(move |_this, args, ctx| {
+                    let a = arg_string(args, 0, ctx)?;
+                    let b = arg_string(args, 1, ctx)?;
+                    Ok(f(gid.to_string(), a, b, ctx))
+                })
+            }
+        };
+
+        let watch_gid = gid.clone();
+        let watch_fn = unsafe {
+            NativeFunction::from_closure(move |_this, args, ctx| {
+                let subpath = arg_string(args, 0, ctx)?;
+                let recursive = args.get_or_undefined(1).to_boolean();
+                let debounce = args.get_or_undefined(2).to_number(ctx).unwrap_or(200.0);
+                Ok(scoped_watch_start(watch_gid.to_string(), subpath, recursive, debounce, ctx))
+            })
+        };
+
+        let obj = ObjectInitializer::new(context)
+            .function(make_method(gid.clone(), scoped_read_file), js_string!("readFile"), 1)
+            .function(make_method(gid.clone(), scoped_read_file_binary), js_string!("readFileBinary"), 1)
+            .function(make_method(gid.clone(), scoped_read_dir), js_string!("readDir"), 1)
+            .function(make_method(gid.clone(), scoped_stat), js_string!("stat"), 1)
+            .function(make_method(gid.clone(), scoped_exists), js_string!("exists"), 1)
+            .function(make_method2(gid.clone(), scoped_write_file), js_string!("writeFile"), 2)
+            .function(make_method(gid.clone(), scoped_mkdir), js_string!("mkdir"), 1)
+            .function(make_method(gid.clone(), scoped_remove), js_string!("remove"), 1)
+            .function(make_method2(gid.clone(), scoped_rename), js_string!("rename"), 2)
+            .function(make_method2(gid.clone(), scoped_copy), js_string!("copy"), 2)
+            .function(watch_fn, js_string!("watch"), 3)
+            .property(js_string!("grantId"), JsValue::from(js_string!(grant_id.as_str())), Attribute::READONLY)
+            .build();
+
+        Ok(obj.into())
     })();
 
-    promise_from_result(context, result).into()
+    match result {
+        Ok(obj) => super::resolve_promise(context, obj).into(),
+        Err(msg) => super::reject_promise(context, msg).into(),
+    }
 }
 
 fn scoped_read_file(grant_id: String, path: String, context: &mut Context) -> JsValue {
