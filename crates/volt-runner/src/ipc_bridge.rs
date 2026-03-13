@@ -298,6 +298,18 @@ fn try_dispatch_native_fast_path(raw: &str) -> Option<IpcResponse> {
         }
     };
 
+    if request.method == "__volt_internal:csp-violation" {
+        let blocked = request.args.get("blockedURI").and_then(JsonValue::as_str).unwrap_or("unknown");
+        let directive = request.args.get("violatedDirective").and_then(JsonValue::as_str).unwrap_or("unknown");
+        tracing::warn!(
+            blocked_uri = blocked,
+            directive = directive,
+            "CSP violation: {blocked} blocked by \"{directive}\" directive. \
+             Review CSP settings or check the resource URL."
+        );
+        return Some(IpcResponse::success(request.id, serde_json::json!(null)));
+    }
+
     volt_bench::dispatch_native_fast_path(&request.method, request.args).map(
         |result| match result {
             Ok(payload) => IpcResponse::success(request.id, payload),

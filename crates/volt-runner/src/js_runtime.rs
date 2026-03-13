@@ -185,17 +185,21 @@ impl JsRuntimeClient {
 
         match response_rx.recv_timeout(response_timeout) {
             Ok(response) => Ok(response),
-            Err(RecvTimeoutError::Timeout) => Ok(IpcResponse::error_with_details(
-                serde_support::extract_ipc_request_id(raw),
-                format!(
-                    "IPC handler timed out after {}ms before the runtime returned a response",
-                    response_timeout.as_millis()
-                ),
-                IPC_HANDLER_TIMEOUT_CODE.to_string(),
-                serde_json::json!({
-                    "timeoutMs": response_timeout.as_millis()
-                }),
-            )),
+            Err(RecvTimeoutError::Timeout) => {
+                let method = serde_support::extract_ipc_method(raw);
+                Ok(IpcResponse::error_with_details(
+                    serde_support::extract_ipc_request_id(raw),
+                    format!(
+                        "IPC handler '{method}' timed out after {}ms before the runtime returned a response",
+                        response_timeout.as_millis()
+                    ),
+                    IPC_HANDLER_TIMEOUT_CODE.to_string(),
+                    serde_json::json!({
+                        "timeoutMs": response_timeout.as_millis(),
+                        "method": method
+                    }),
+                ))
+            }
             Err(RecvTimeoutError::Disconnected) => {
                 Err("js runtime IPC request channel disconnected".to_string())
             }

@@ -51,7 +51,16 @@ pub fn create_webview(
         enable_devtools || config.devtools,
     )
     .with_transparent(config.transparent)
-    .with_navigation_handler(move |url| policy::is_origin_allowed(&url, &navigation_origins));
+    .with_navigation_handler(move |url| {
+        let allowed = policy::is_origin_allowed(&url, &navigation_origins);
+        if !allowed {
+            log::warn!(
+                "Navigation blocked: {url} — origin not in allowed list. \
+                 Add it to allowedOrigins in volt.config.ts."
+            );
+        }
+        allowed
+    });
 
     // Always inject the Volt IPC bridge.
     let ipc_init = crate::ipc::ipc_init_script();

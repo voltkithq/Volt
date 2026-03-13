@@ -48,13 +48,15 @@ pub fn ipc_init_script() -> String {
 
                 pending.set(id, { resolve: resolve, reject: reject });
                 window.ipc.postMessage(payload);
-                // Timeout after 30 seconds
+                // Timeout matches the native IPC handler timeout (120s).
+                // Native dialogs (file picker, message box) block the backend
+                // thread while the user interacts, so this must be generous.
                 setTimeout(function() {
                     if (pending.has(id)) {
                         pending.delete(id);
                         reject(new Error('IPC request timed out: ' + method));
                     }
-                }, 30000);
+                }, 120000);
             });
         },
         on: function(event, callback) {
@@ -109,6 +111,25 @@ pub fn ipc_init_script() -> String {
             });
         }
     };
+
+    // Forward CSP violations to native logging so they are visible without DevTools.
+    document.addEventListener('securitypolicyviolation', function(e) {
+        var msg = '[volt:csp] Blocked ' + e.blockedURI +
+            ' — violates "' + e.violatedDirective + '" directive.';
+        console.error(msg);
+        try {
+            window.ipc.postMessage(JSON.stringify({
+                id: '__csp_violation__',
+                method: '__volt_internal:csp-violation',
+                args: {
+                    blockedURI: e.blockedURI,
+                    violatedDirective: e.violatedDirective,
+                    effectiveDirective: e.effectiveDirective,
+                    originalPolicy: e.originalPolicy
+                }
+            }));
+        } catch(_) {}
+    });
 })();
 "#
     .to_string()

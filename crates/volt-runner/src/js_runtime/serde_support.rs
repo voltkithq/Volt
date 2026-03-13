@@ -59,6 +59,17 @@ pub(super) fn response_for_dispatch_payload(request_id: String, payload: JsonVal
     IpcResponse::error_with_code(request_id, error_message, error_code)
 }
 
+pub(crate) fn extract_ipc_method(raw: &str) -> String {
+    match serde_json::from_str::<JsonValue>(raw) {
+        Ok(value) => value
+            .get("method")
+            .and_then(JsonValue::as_str)
+            .map(ToString::to_string)
+            .unwrap_or_else(|| "unknown".to_string()),
+        Err(_) => "unknown".to_string(),
+    }
+}
+
 pub(super) fn extract_ipc_request_id(raw: &str) -> String {
     match serde_json::from_str::<JsonValue>(raw) {
         Ok(value) => extract_ipc_request_id_from_value(&value),
