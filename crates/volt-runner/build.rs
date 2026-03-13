@@ -6,6 +6,9 @@ const ENV_ASSET_BUNDLE: &str = "VOLT_ASSET_BUNDLE";
 const ENV_BACKEND_BUNDLE: &str = "VOLT_BACKEND_BUNDLE";
 const ENV_RUNNER_CONFIG: &str = "VOLT_RUNNER_CONFIG";
 const ENV_UPDATE_PUBLIC_KEY: &str = "VOLT_UPDATE_PUBLIC_KEY";
+const ENV_APP_ICON: &str = "VOLT_APP_ICON";
+const ENV_APP_NAME: &str = "VOLT_APP_NAME";
+const ENV_APP_VERSION: &str = "VOLT_APP_VERSION";
 const DEFAULT_ASSET_BUNDLE: &str = "assets/default-assets.bin";
 const DEFAULT_BACKEND_BUNDLE: &str = "assets/default-backend.js";
 const DEFAULT_RUNNER_CONFIG: &str = "assets/default-config.json";
@@ -19,6 +22,9 @@ fn main() {
     println!("cargo:rerun-if-env-changed={ENV_BACKEND_BUNDLE}");
     println!("cargo:rerun-if-env-changed={ENV_RUNNER_CONFIG}");
     println!("cargo:rerun-if-env-changed={ENV_UPDATE_PUBLIC_KEY}");
+    println!("cargo:rerun-if-env-changed={ENV_APP_ICON}");
+    println!("cargo:rerun-if-env-changed={ENV_APP_NAME}");
+    println!("cargo:rerun-if-env-changed={ENV_APP_VERSION}");
 
     let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR is not set by cargo"));
     let manifest_dir = PathBuf::from(
@@ -48,6 +54,44 @@ fn main() {
 
     write_embedded_update_public_key(&out_dir.join(OUT_UPDATE_PUBLIC_KEY))
         .unwrap_or_else(|error| panic!("failed to embed update public key: {error}"));
+
+    embed_windows_resource();
+}
+
+#[cfg(windows)]
+fn embed_windows_resource() {
+    let mut res = winresource::WindowsResource::new();
+
+    if let Ok(icon_path) = env::var(ENV_APP_ICON) {
+        let icon = strip_surrounding_quotes(icon_path.trim()).trim().to_string();
+        if !icon.is_empty() && Path::new(&icon).exists() {
+            println!("cargo:rerun-if-changed={icon}");
+            res.set_icon(&icon);
+        }
+    }
+
+    if let Ok(name) = env::var(ENV_APP_NAME) {
+        let name = strip_surrounding_quotes(name.trim()).trim().to_string();
+        if !name.is_empty() {
+            res.set("ProductName", &name);
+            res.set("FileDescription", &name);
+        }
+    }
+
+    if let Ok(version) = env::var(ENV_APP_VERSION) {
+        let version = strip_surrounding_quotes(version.trim()).trim().to_string();
+        if !version.is_empty() {
+            res.set("FileVersion", &version);
+            res.set("ProductVersion", &version);
+        }
+    }
+
+    res.compile().expect("failed to compile Windows resources");
+}
+
+#[cfg(not(windows))]
+fn embed_windows_resource() {
+    // No-op on non-Windows platforms.
 }
 
 fn embed_artifact(env_key: &str, default_path: &Path, out_path: &Path) -> Result<(), String> {

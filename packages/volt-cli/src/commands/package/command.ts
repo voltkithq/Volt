@@ -27,6 +27,7 @@ import {
   type WindowsInstallMode,
   WINDOWS_UPDATER_HELPER_FILE_NAME,
 } from './types.js';
+import { runPackagePreflight, enforcePreflightResult } from '../../utils/preflight.js';
 
 /**
  * Package the application into platform-specific installers.
@@ -51,15 +52,6 @@ export async function packageCommand(options: PackageOptions): Promise<void> {
   const distVoltDir = resolve(cwd, 'dist-volt');
   const packageDir = resolve(cwd, 'dist-package');
 
-  if (!existsSync(distVoltDir)) {
-    console.error('[volt] No build output found. Run `volt build` first.');
-    process.exit(1);
-  }
-
-  if (!existsSync(packageDir)) {
-    mkdirSync(packageDir, { recursive: true });
-  }
-
   const platform = normalizePackagePlatform(options.target);
   const format = validateRequestedPackageFormat(platform, options.format);
   if (options.format && !format) {
@@ -68,6 +60,14 @@ export async function packageCommand(options: PackageOptions): Promise<void> {
       `[volt] Unsupported package format "${options.format}" for platform "${platform}". Supported formats: ${supported}.`,
     );
     process.exit(1);
+  }
+
+  enforcePreflightResult(
+    runPackagePreflight(cwd, platform, { format: format ?? undefined, distVoltDir }),
+  );
+
+  if (!existsSync(packageDir)) {
+    mkdirSync(packageDir, { recursive: true });
   }
 
   const cliInstallMode = normalizeWindowsInstallMode(options.installMode);

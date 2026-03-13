@@ -14,6 +14,8 @@ import { readCargoMetadata, resolveRuntimeArtifact } from './runtime-artifact.js
 
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { runBuildPreflight, enforcePreflightResult } from '../../utils/preflight.js';
+import { convertPngToIco } from '../../utils/icon-converter.js';
 
 export interface BuildOptions {
   target?: string;
@@ -67,6 +69,15 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
 
   const config = await loadConfig(cwd, { strict: true, commandName: 'build' });
   console.log(`[volt] App: ${config.name}`);
+
+  const hasCargoWorkspace = Boolean(readCargoMetadata(cwd)?.workspace_root);
+  const hasBundledRunner = Boolean(resolveBundledRunnerCrates());
+  enforcePreflightResult(
+    runBuildPreflight(cwd, config, {
+      hasPrebuiltRunner: hasCargoWorkspace || hasBundledRunner,
+      target: options.target,
+    }),
+  );
 
   const outDir = config.build?.outDir ?? 'dist';
   const outputDir = resolve(cwd, 'dist-volt');
@@ -205,6 +216,26 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
     failBuild('[volt] Internal error: missing generated bundle paths.');
   }
 
+  // Resolve and convert app icon for Windows resource embedding
+  let appIconPath: string | undefined;
+  if (buildPlatform === 'win32') {
+    const windowConfig = config.window as Record<string, unknown> | undefined;
+    const iconField = windowConfig?.icon;
+    if (typeof iconField === 'string' && iconField.trim()) {
+      const resolvedIcon = resolve(cwd, iconField);
+      if (existsSync(resolvedIcon) && resolvedIcon.endsWith('.png')) {
+        try {
+          appIconPath = convertPngToIco(resolvedIcon, tempBundleDir!);
+          console.log(`[volt] App icon converted for embedding: ${iconField}`);
+        } catch (err) {
+          console.warn(`[volt] Failed to convert icon to ICO format: ${err}`);
+        }
+      } else if (existsSync(resolvedIcon) && resolvedIcon.endsWith('.ico')) {
+        appIconPath = resolvedIcon;
+      }
+    }
+  }
+
   try {
     execFileSync('cargo', cargoArgs, {
       cwd: workspaceRoot,
@@ -217,6 +248,7 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
         VOLT_APP_NAME: config.name,
         VOLT_APP_VERSION: config.version ?? '0.1.0',
         VOLT_UPDATE_PUBLIC_KEY: config.updater?.publicKey ?? '',
+        ...(appIconPath ? { VOLT_APP_ICON: appIconPath } : {}),
       },
     });
     console.log('[volt] Native binary compiled successfully.');
