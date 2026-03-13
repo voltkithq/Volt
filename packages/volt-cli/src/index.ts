@@ -129,4 +129,30 @@ updateProgram
     await updatePublishCommand(options);
   });
 
+program
+  .command('new [project-name]')
+  .description('Create a new Volt project')
+  .option('--framework <framework>', 'Template framework (vanilla, react, vue, svelte, enterprise)')
+  .action(async (projectName, options) => {
+    const { execSync } = await import('node:child_process');
+    const args: string[] = [];
+    if (projectName) args.push(projectName);
+    if (options.framework) args.push('--framework', options.framework);
+
+    // Detect current package manager
+    const ua = process.env.npm_config_user_agent ?? '';
+    let cmd: string;
+    if (ua.startsWith('pnpm')) {
+      cmd = `pnpm create @voltkit/volt ${args.join(' ')}`;
+    } else if (ua.startsWith('yarn')) {
+      cmd = `yarn create @voltkit/volt ${args.join(' ')}`;
+    } else if (ua.startsWith('bun')) {
+      cmd = `bun create @voltkit/volt ${args.join(' ')}`;
+    } else {
+      cmd = `npx @voltkit/create-volt ${args.join(' ')}`;
+    }
+
+    execSync(cmd, { stdio: 'inherit' });
+  });
+
 program.parse();
