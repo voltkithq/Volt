@@ -21,6 +21,12 @@ npm install
 npm run dev
 ```
 
+Or if you already have `@voltkit/volt-cli` installed:
+
+```bash
+volt new my-app
+```
+
 Supports Vanilla, React, Vue, Svelte, and Enterprise templates out of the box. Pass `--framework react` (or `vue`, `svelte`, `enterprise`) to skip the prompt.
 
 Build and package for distribution:
@@ -35,13 +41,13 @@ npm run package
 | | Electron | Tauri | Volt |
 |---|---|---|---|
 | Runtime | Chromium + Node.js | Rust + system webview | Rust + system webview |
-| Binary size | ~150 MB+ | ~3-10 MB | ~21 MB |
+| Binary size | ~150 MB+ | ~3-10 MB | ~21 MB (includes Boa JS engine) |
 | Backend language | JavaScript | Rust | TypeScript orchestration + Rust-backed APIs |
 | Learning curve | Low (all JS) | Steep (must write Rust) | Low (all TypeScript) |
 | Permission model | None by default | Capability config | Capability config |
 | API style | `require('electron')` | Rust commands | `ipcMain`, `BrowserWindow`, `data`, `workflow` |
 
-Volt sits between Electron and Tauri. You get Electron-style TypeScript app authoring with a Rust-backed runtime, capability-based permissions by default, and native fast paths for heavy operations. Volt is not trying to be a drop-in Electron replacement for arbitrary main-process JavaScript workloads.
+Volt sits between Electron and Tauri. You get Electron-style TypeScript app authoring with a Rust-backed runtime, capability-based permissions by default, and native fast paths for heavy operations. Volt's binary is larger than Tauri because it embeds the Boa JavaScript engine for backend TypeScript execution — the tradeoff for not requiring app developers to write Rust. Volt is not trying to be a drop-in Electron replacement for arbitrary main-process JavaScript workloads.
 
 ## What Volt Is
 
@@ -64,7 +70,7 @@ Volt sits between Electron and Tauri. You get Electron-style TypeScript app auth
 - **Built-in updater** -- Ed25519 signed updates with SHA-256 verification, no third-party services required
 - **Embedded SQLite** -- `volt:db` module for local storage without external dependencies
 - **Secure file access** -- scoped `volt:fs` with grant tokens, `ScopedFs` handles, and file watching
-- **Dev experience** -- Vite-powered HMR in dev, single binary output in production
+- **Dev experience** -- Vite-powered frontend HMR, backend hot-reload on save, inline sourcemaps for stack traces
 - **Cross-platform** -- Windows, macOS (Intel + Apple Silicon), Linux
 
 ## Prerequisites

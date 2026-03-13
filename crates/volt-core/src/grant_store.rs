@@ -10,8 +10,8 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use thiserror::Error;
 
@@ -62,12 +62,7 @@ pub fn create_grant(path: PathBuf) -> Result<String, GrantError> {
 
     let id = generate_grant_id();
     with_store(|store| {
-        store.insert(
-            id.clone(),
-            GrantEntry {
-                root_path: path,
-            },
-        );
+        store.insert(id.clone(), GrantEntry { root_path: path });
     });
     Ok(id)
 }

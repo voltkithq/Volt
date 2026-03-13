@@ -259,7 +259,11 @@ fn test_rename_file() {
 #[test]
 fn test_rename_rejects_missing_source() {
     let base = env::temp_dir();
-    let result = rename(&base, "volt_test_rename_missing.txt", "volt_test_rename_dest.txt");
+    let result = rename(
+        &base,
+        "volt_test_rename_missing.txt",
+        "volt_test_rename_dest.txt",
+    );
     assert!(result.is_err());
 }
 
@@ -273,7 +277,12 @@ fn test_rename_rejects_existing_destination() {
 
     let result = rename(&base, from, to);
     assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("FS_ALREADY_EXISTS"));
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("FS_ALREADY_EXISTS")
+    );
 
     remove(&base, from).unwrap();
     remove(&base, to).unwrap();
@@ -318,7 +327,11 @@ fn test_copy_file() {
 #[test]
 fn test_copy_rejects_missing_source() {
     let base = env::temp_dir();
-    let result = copy(&base, "volt_test_copy_missing.txt", "volt_test_copy_dest.txt");
+    let result = copy(
+        &base,
+        "volt_test_copy_missing.txt",
+        "volt_test_copy_dest.txt",
+    );
     assert!(result.is_err());
 }
 
@@ -330,7 +343,12 @@ fn test_copy_rejects_directory() {
 
     let result = copy(&base, dir, "volt_test_copy_dir_dest");
     assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("files, not directories"));
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("files, not directories")
+    );
 
     remove(&base, dir).unwrap();
 }
@@ -345,7 +363,12 @@ fn test_copy_rejects_existing_destination() {
 
     let result = copy(&base, from, to);
     assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("FS_ALREADY_EXISTS"));
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("FS_ALREADY_EXISTS")
+    );
 
     remove(&base, from).unwrap();
     remove(&base, to).unwrap();

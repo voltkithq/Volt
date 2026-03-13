@@ -1,4 +1,4 @@
-import { build as esbuild, type Plugin } from 'esbuild';
+import { build as esbuild, context as esbuildContext, type Plugin } from 'esbuild';
 import { existsSync, rmSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -38,6 +38,7 @@ export interface DevBackendLoadResult {
   backendEntryPath: string | null;
   backendBundlePath: string | null;
   dispose: () => void;
+  watch: (onRebuild: (ok: boolean) => void) => Promise<() => void>;
 }
 
 function resolveRuntimeModuleFile(stem: string): string {
@@ -86,10 +87,12 @@ export async function loadBackendEntrypointForDev(
       backendEntryPath: null,
       backendBundlePath: null,
       dispose: () => {},
+      watch: async () => () => {},
     };
   }
 
   const runtimeModulePathMap = buildRuntimeModulePathMap();
+  const tsconfigPath = resolve(projectRoot, 'tsconfig.json');
   const backendTempRoot = resolve(projectRoot, '.volt-dev', 'dev-backend');
   const staleRecovery = recoverStaleScopedDirectories(backendTempRoot, {
     prefix: DEV_BACKEND_BUNDLE_PREFIX,
@@ -104,7 +107,6 @@ export async function loadBackendEntrypointForDev(
 
   const tempDir = createScopedTempDirectory(backendTempRoot, DEV_BACKEND_BUNDLE_PREFIX);
   const backendBundlePath = resolve(tempDir, 'backend.bundle.mjs');
-  const tsconfigPath = resolve(projectRoot, 'tsconfig.json');
 
   const dispose = (): void => {
     rmSync(tempDir, { recursive: true, force: true });
@@ -118,7 +120,7 @@ export async function loadBackendEntrypointForDev(
       format: 'esm',
       platform: 'node',
       target: ['node22'],
-      sourcemap: false,
+      sourcemap: 'inline',
       minify: false,
       external: ['voltkit', 'voltkit/*', '@voltkit/volt-native'],
       tsconfig: existsSync(tsconfigPath) ? tsconfigPath : undefined,
@@ -134,6 +136,48 @@ export async function loadBackendEntrypointForDev(
       backendEntryPath,
       backendBundlePath,
       dispose,
+      async watch(onRebuild: (ok: boolean) => void): Promise<() => void> {
+        const rebuildPlugin: Plugin = {
+          name: 'volt-dev-backend-reload',
+          setup(build) {
+            build.onEnd(async (result) => {
+              if (result.errors.length > 0) {
+                console.error('[volt] Backend rebuild failed.');
+                onRebuild(false);
+                return;
+              }
+              try {
+                const url = `${pathToFileURL(backendBundlePath).href}?t=${Date.now()}`;
+                await import(url);
+                console.log('[volt] Backend reloaded.');
+                onRebuild(true);
+              } catch (err) {
+                const msg = err instanceof Error ? err.message : String(err);
+                console.error(`[volt] Backend reload error: ${msg}`);
+                onRebuild(false);
+              }
+            });
+          },
+        };
+
+        const ctx = await esbuildContext({
+          entryPoints: [backendEntryPath!],
+          outfile: backendBundlePath,
+          bundle: true,
+          format: 'esm',
+          platform: 'node',
+          target: ['node22'],
+          sourcemap: 'inline',
+          minify: false,
+          external: ['voltkit', 'voltkit/*', '@voltkit/volt-native'],
+          tsconfig: existsSync(tsconfigPath) ? tsconfigPath : undefined,
+          logLevel: 'warning',
+          plugins: [createRuntimeModuleAliasPlugin(runtimeModulePathMap), rebuildPlugin],
+        });
+
+        await ctx.watch();
+        return () => ctx.dispose();
+      },
     };
   } catch (error) {
     dispose();

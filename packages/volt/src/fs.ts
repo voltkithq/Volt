@@ -58,12 +58,18 @@ export interface WatchOptions {
   recursive?: boolean;
   /** Debounce interval in milliseconds. Defaults to 200. */
   debounceMs?: number;
+  /** Optional callback invoked when events occur. Uses internal polling at the debounce interval. */
+  onEvent?: (events: WatchEvent[]) => void;
 }
 
 /** A file watcher handle. Call poll() to retrieve events, close() to stop watching. */
 export interface FileWatcher {
   /** Drain all pending events since the last poll. */
   poll(): Promise<WatchEvent[]>;
+  /** Register a callback for file change events. Starts an internal polling loop. */
+  on(event: 'change', handler: (events: WatchEvent[]) => void): void;
+  /** Remove a previously registered callback. */
+  off(event: 'change', handler: (events: WatchEvent[]) => void): void;
   /** Stop watching and release resources. */
   close(): Promise<void>;
 }
@@ -284,11 +290,60 @@ async function bindScope(grantId: string): Promise<ScopedFs> {
       const recursive = options?.recursive ?? true;
       const debounceMs = options?.debounceMs ?? 200;
       const watcherId = fsWatchStart(grantBasePath, subpath, recursive, debounceMs);
+      const handlers = new Set<(events: WatchEvent[]) => void>();
+      let pollInterval: ReturnType<typeof setInterval> | null = null;
+
+      if (options?.onEvent) {
+        handlers.add(options.onEvent);
+      }
+
+      function startPolling(): void {
+        if (pollInterval) return;
+        pollInterval = setInterval(() => {
+          const events = fsWatchPoll(watcherId) as WatchEvent[];
+          if (events.length > 0) {
+            for (const handler of handlers) {
+              try {
+                handler(events);
+              } catch {
+                /* handler errors should not crash the watcher */
+              }
+            }
+          }
+        }, Math.max(debounceMs, 50));
+      }
+
+      function stopPollingIfEmpty(): void {
+        if (handlers.size === 0 && pollInterval) {
+          clearInterval(pollInterval);
+          pollInterval = null;
+        }
+      }
+
+      if (handlers.size > 0) startPolling();
+
       return {
         async poll(): Promise<WatchEvent[]> {
           return fsWatchPoll(watcherId) as WatchEvent[];
         },
+        on(event: 'change', handler: (events: WatchEvent[]) => void): void {
+          if (event === 'change') {
+            handlers.add(handler);
+            startPolling();
+          }
+        },
+        off(event: 'change', handler: (events: WatchEvent[]) => void): void {
+          if (event === 'change') {
+            handlers.delete(handler);
+            stopPollingIfEmpty();
+          }
+        },
         async close(): Promise<void> {
+          if (pollInterval) {
+            clearInterval(pollInterval);
+            pollInterval = null;
+          }
+          handlers.clear();
           fsWatchClose(watcherId);
         },
       };
@@ -331,11 +386,60 @@ async function watch(path: string, options?: WatchOptions): Promise<FileWatcher>
   const recursive = options?.recursive ?? true;
   const debounceMs = options?.debounceMs ?? 200;
   const watcherId = fsWatchStart(baseDir, path, recursive, debounceMs);
+  const handlers = new Set<(events: WatchEvent[]) => void>();
+  let pollInterval: ReturnType<typeof setInterval> | null = null;
+
+  if (options?.onEvent) {
+    handlers.add(options.onEvent);
+  }
+
+  function startPolling(): void {
+    if (pollInterval) return;
+    pollInterval = setInterval(() => {
+      const events = fsWatchPoll(watcherId) as WatchEvent[];
+      if (events.length > 0) {
+        for (const handler of handlers) {
+          try {
+            handler(events);
+          } catch {
+            /* handler errors should not crash the watcher */
+          }
+        }
+      }
+    }, Math.max(debounceMs, 50));
+  }
+
+  function stopPollingIfEmpty(): void {
+    if (handlers.size === 0 && pollInterval) {
+      clearInterval(pollInterval);
+      pollInterval = null;
+    }
+  }
+
+  if (handlers.size > 0) startPolling();
+
   return {
     async poll(): Promise<WatchEvent[]> {
       return fsWatchPoll(watcherId) as WatchEvent[];
     },
+    on(event: 'change', handler: (events: WatchEvent[]) => void): void {
+      if (event === 'change') {
+        handlers.add(handler);
+        startPolling();
+      }
+    },
+    off(event: 'change', handler: (events: WatchEvent[]) => void): void {
+      if (event === 'change') {
+        handlers.delete(handler);
+        stopPollingIfEmpty();
+      }
+    },
     async close(): Promise<void> {
+      if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+      }
+      handlers.clear();
       fsWatchClose(watcherId);
     },
   };

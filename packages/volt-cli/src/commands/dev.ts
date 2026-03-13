@@ -188,6 +188,20 @@ export async function devCommand(options: DevOptions): Promise<void> {
   disposeBackendBundle = backendLoadState.dispose;
   if (backendLoadState.loaded) {
     console.log(`[volt] Backend loaded from ${backendLoadState.backendEntryPath}`);
+    try {
+      const stopWatching = await backendLoadState.watch((ok) => {
+        if (ok) {
+          console.log('[volt] Backend changes applied.');
+        }
+      });
+      const originalDispose = disposeBackendBundle;
+      disposeBackendBundle = () => {
+        stopWatching();
+        originalDispose();
+      };
+    } catch {
+      console.warn('[volt] Backend file watching unavailable.');
+    }
   } else {
     console.log('[volt] No backend entry found for dev mode.');
   }

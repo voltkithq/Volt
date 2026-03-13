@@ -56,6 +56,12 @@ export function loadNativeBinding(): NativeBinding | null {
     const require = createRequire(import.meta.url);
     return require('@voltkit/volt-native') as NativeBinding;
   } catch {
-    return null;
+    // Fallback: resolve from project root (needed when volt-cli is file-linked)
+    try {
+      const require = createRequire(new URL('file:///' + process.cwd().replace(/\\/g, '/') + '/package.json'));
+      return require('@voltkit/volt-native') as NativeBinding;
+    } catch {
+      return null;
+    }
   }
 }

@@ -5,8 +5,8 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
@@ -66,11 +66,7 @@ fn make_relative(root: &Path, absolute: &Path) -> Option<String> {
 }
 
 /// Start watching a directory. Returns a watcher ID.
-pub fn start_watch(
-    root: PathBuf,
-    recursive: bool,
-    debounce_ms: u64,
-) -> Result<String, String> {
+pub fn start_watch(root: PathBuf, recursive: bool, debounce_ms: u64) -> Result<String, String> {
     let canonical_root = root
         .canonicalize()
         .map_err(|e| format!("cannot watch: {e}"))?;
@@ -84,33 +80,30 @@ pub fn start_watch(
 
     let debounce_duration = Duration::from_millis(debounce_ms.max(50));
 
-    let config = Config::default()
-        .with_poll_interval(debounce_duration);
+    let config = Config::default().with_poll_interval(debounce_duration);
 
     let mut watcher = RecommendedWatcher::new(
-        move |result: Result<Event, notify::Error>| {
-            match result {
-                Ok(event) => {
-                    let kind = classify_event(&event.kind);
-                    for path in &event.paths {
-                        if let Some(rel) = make_relative(&root_for_handler, path) {
-                            let _ = tx.send(WatchEvent {
-                                kind: kind.to_string(),
-                                path: rel,
-                                old_path: None,
-                                is_dir: path.is_dir().then_some(true),
-                            });
-                        }
+        move |result: Result<Event, notify::Error>| match result {
+            Ok(event) => {
+                let kind = classify_event(&event.kind);
+                for path in &event.paths {
+                    if let Some(rel) = make_relative(&root_for_handler, path) {
+                        let _ = tx.send(WatchEvent {
+                            kind: kind.to_string(),
+                            path: rel,
+                            old_path: None,
+                            is_dir: path.is_dir().then_some(true),
+                        });
                     }
                 }
-                Err(_) => {
-                    let _ = tx.send(WatchEvent {
-                        kind: "overflow".to_string(),
-                        path: String::new(),
-                        old_path: None,
-                        is_dir: None,
-                    });
-                }
+            }
+            Err(_) => {
+                let _ = tx.send(WatchEvent {
+                    kind: "overflow".to_string(),
+                    path: String::new(),
+                    old_path: None,
+                    is_dir: None,
+                });
             }
         },
         config,

@@ -104,8 +104,7 @@ fn arg_string(args: &[JsValue], index: usize, context: &mut Context) -> JsResult
 fn bind_scope(grant_id: String, context: &mut Context) -> JsValue {
     let result = (|| -> Result<JsValue, String> {
         require_permission(Permission::FileSystem).map_err(super::format_js_error)?;
-        grant_store::resolve_grant(&grant_id)
-            .map_err(|error| format!("{error}"))?;
+        grant_store::resolve_grant(&grant_id).map_err(|error| format!("{error}"))?;
 
         let gid: Rc<str> = Rc::from(grant_id.as_str());
 
@@ -122,16 +121,17 @@ fn bind_scope(grant_id: String, context: &mut Context) -> JsValue {
             }
         };
 
-        let make_method2 = |gid: Rc<str>, f: fn(String, String, String, &mut Context) -> JsValue| {
-            let gid = gid.clone();
-            unsafe {
-                NativeFunction::from_closure(move |_this, args, ctx| {
-                    let a = arg_string(args, 0, ctx)?;
-                    let b = arg_string(args, 1, ctx)?;
-                    Ok(f(gid.to_string(), a, b, ctx))
-                })
-            }
-        };
+        let make_method2 =
+            |gid: Rc<str>, f: fn(String, String, String, &mut Context) -> JsValue| {
+                let gid = gid.clone();
+                unsafe {
+                    NativeFunction::from_closure(move |_this, args, ctx| {
+                        let a = arg_string(args, 0, ctx)?;
+                        let b = arg_string(args, 1, ctx)?;
+                        Ok(f(gid.to_string(), a, b, ctx))
+                    })
+                }
+            };
 
         let watch_gid = gid.clone();
         let watch_fn = unsafe {
@@ -139,23 +139,69 @@ fn bind_scope(grant_id: String, context: &mut Context) -> JsValue {
                 let subpath = arg_string(args, 0, ctx)?;
                 let recursive = args.get_or_undefined(1).to_boolean();
                 let debounce = args.get_or_undefined(2).to_number(ctx).unwrap_or(200.0);
-                Ok(scoped_watch_start(watch_gid.to_string(), subpath, recursive, debounce, ctx))
+                Ok(scoped_watch_start(
+                    watch_gid.to_string(),
+                    subpath,
+                    recursive,
+                    debounce,
+                    ctx,
+                ))
             })
         };
 
         let obj = ObjectInitializer::new(context)
-            .function(make_method(gid.clone(), scoped_read_file), js_string!("readFile"), 1)
-            .function(make_method(gid.clone(), scoped_read_file_binary), js_string!("readFileBinary"), 1)
-            .function(make_method(gid.clone(), scoped_read_dir), js_string!("readDir"), 1)
+            .function(
+                make_method(gid.clone(), scoped_read_file),
+                js_string!("readFile"),
+                1,
+            )
+            .function(
+                make_method(gid.clone(), scoped_read_file_binary),
+                js_string!("readFileBinary"),
+                1,
+            )
+            .function(
+                make_method(gid.clone(), scoped_read_dir),
+                js_string!("readDir"),
+                1,
+            )
             .function(make_method(gid.clone(), scoped_stat), js_string!("stat"), 1)
-            .function(make_method(gid.clone(), scoped_exists), js_string!("exists"), 1)
-            .function(make_method2(gid.clone(), scoped_write_file), js_string!("writeFile"), 2)
-            .function(make_method(gid.clone(), scoped_mkdir), js_string!("mkdir"), 1)
-            .function(make_method(gid.clone(), scoped_remove), js_string!("remove"), 1)
-            .function(make_method2(gid.clone(), scoped_rename), js_string!("rename"), 2)
-            .function(make_method2(gid.clone(), scoped_copy), js_string!("copy"), 2)
+            .function(
+                make_method(gid.clone(), scoped_exists),
+                js_string!("exists"),
+                1,
+            )
+            .function(
+                make_method2(gid.clone(), scoped_write_file),
+                js_string!("writeFile"),
+                2,
+            )
+            .function(
+                make_method(gid.clone(), scoped_mkdir),
+                js_string!("mkdir"),
+                1,
+            )
+            .function(
+                make_method(gid.clone(), scoped_remove),
+                js_string!("remove"),
+                1,
+            )
+            .function(
+                make_method2(gid.clone(), scoped_rename),
+                js_string!("rename"),
+                2,
+            )
+            .function(
+                make_method2(gid.clone(), scoped_copy),
+                js_string!("copy"),
+                2,
+            )
             .function(watch_fn, js_string!("watch"), 3)
-            .property(js_string!("grantId"), JsValue::from(js_string!(grant_id.as_str())), Attribute::READONLY)
+            .property(
+                js_string!("grantId"),
+                JsValue::from(js_string!(grant_id.as_str())),
+                Attribute::READONLY,
+            )
             .build();
 
         Ok(obj.into())
@@ -170,8 +216,7 @@ fn bind_scope(grant_id: String, context: &mut Context) -> JsValue {
 fn scoped_read_file(grant_id: String, path: String, context: &mut Context) -> JsValue {
     let result = (|| {
         require_permission(Permission::FileSystem).map_err(super::format_js_error)?;
-        let base = grant_store::resolve_grant(&grant_id)
-            .map_err(|error| format!("{error}"))?;
+        let base = grant_store::resolve_grant(&grant_id).map_err(|error| format!("{error}"))?;
         fs::read_file_text(&base, &path).map_err(|error| format!("fs read failed: {error}"))
     })();
 
@@ -181,8 +226,7 @@ fn scoped_read_file(grant_id: String, path: String, context: &mut Context) -> Js
 fn scoped_read_dir(grant_id: String, path: String, context: &mut Context) -> JsValue {
     let result = (|| {
         require_permission(Permission::FileSystem).map_err(super::format_js_error)?;
-        let base = grant_store::resolve_grant(&grant_id)
-            .map_err(|error| format!("{error}"))?;
+        let base = grant_store::resolve_grant(&grant_id).map_err(|error| format!("{error}"))?;
         fs::read_dir(&base, &path).map_err(|error| format!("fs read dir failed: {error}"))
     })();
 
@@ -192,8 +236,7 @@ fn scoped_read_dir(grant_id: String, path: String, context: &mut Context) -> JsV
 fn scoped_stat(grant_id: String, path: String, context: &mut Context) -> JsValue {
     let result = (|| {
         require_permission(Permission::FileSystem).map_err(super::format_js_error)?;
-        let base = grant_store::resolve_grant(&grant_id)
-            .map_err(|error| format!("{error}"))?;
+        let base = grant_store::resolve_grant(&grant_id).map_err(|error| format!("{error}"))?;
         let info = fs::stat(&base, &path).map_err(|error| format!("fs stat failed: {error}"))?;
         Ok(serde_json::json!({
             "size": info.size,
@@ -211,19 +254,22 @@ fn scoped_stat(grant_id: String, path: String, context: &mut Context) -> JsValue
 fn scoped_exists(grant_id: String, path: String, context: &mut Context) -> JsValue {
     let result = (|| {
         require_permission(Permission::FileSystem).map_err(super::format_js_error)?;
-        let base = grant_store::resolve_grant(&grant_id)
-            .map_err(|error| format!("{error}"))?;
+        let base = grant_store::resolve_grant(&grant_id).map_err(|error| format!("{error}"))?;
         fs::exists(&base, &path).map_err(|error| format!("fs exists failed: {error}"))
     })();
 
     promise_from_result(context, result).into()
 }
 
-fn scoped_write_file(grant_id: String, path: String, data: String, context: &mut Context) -> JsValue {
+fn scoped_write_file(
+    grant_id: String,
+    path: String,
+    data: String,
+    context: &mut Context,
+) -> JsValue {
     let result = (|| {
         require_permission(Permission::FileSystem).map_err(super::format_js_error)?;
-        let base = grant_store::resolve_grant(&grant_id)
-            .map_err(|error| format!("{error}"))?;
+        let base = grant_store::resolve_grant(&grant_id).map_err(|error| format!("{error}"))?;
         fs::write_file(&base, &path, data.as_bytes())
             .map_err(|error| format!("fs write failed: {error}"))
     })();
@@ -234,8 +280,7 @@ fn scoped_write_file(grant_id: String, path: String, data: String, context: &mut
 fn scoped_mkdir(grant_id: String, path: String, context: &mut Context) -> JsValue {
     let result = (|| {
         require_permission(Permission::FileSystem).map_err(super::format_js_error)?;
-        let base = grant_store::resolve_grant(&grant_id)
-            .map_err(|error| format!("{error}"))?;
+        let base = grant_store::resolve_grant(&grant_id).map_err(|error| format!("{error}"))?;
         fs::mkdir(&base, &path).map_err(|error| format!("fs mkdir failed: {error}"))
     })();
 
@@ -245,8 +290,7 @@ fn scoped_mkdir(grant_id: String, path: String, context: &mut Context) -> JsValu
 fn scoped_remove(grant_id: String, path: String, context: &mut Context) -> JsValue {
     let result = (|| {
         require_permission(Permission::FileSystem).map_err(super::format_js_error)?;
-        let base = grant_store::resolve_grant(&grant_id)
-            .map_err(|error| format!("{error}"))?;
+        let base = grant_store::resolve_grant(&grant_id).map_err(|error| format!("{error}"))?;
         fs::remove(&base, &path).map_err(|error| format!("fs remove failed: {error}"))
     })();
 
@@ -256,8 +300,7 @@ fn scoped_remove(grant_id: String, path: String, context: &mut Context) -> JsVal
 fn scoped_rename(grant_id: String, from: String, to: String, context: &mut Context) -> JsValue {
     let result = (|| {
         require_permission(Permission::FileSystem).map_err(super::format_js_error)?;
-        let base = grant_store::resolve_grant(&grant_id)
-            .map_err(|error| format!("{error}"))?;
+        let base = grant_store::resolve_grant(&grant_id).map_err(|error| format!("{error}"))?;
         fs::rename(&base, &from, &to).map_err(|error| format!("fs rename failed: {error}"))
     })();
 
@@ -267,8 +310,7 @@ fn scoped_rename(grant_id: String, from: String, to: String, context: &mut Conte
 fn scoped_copy(grant_id: String, from: String, to: String, context: &mut Context) -> JsValue {
     let result = (|| {
         require_permission(Permission::FileSystem).map_err(super::format_js_error)?;
-        let base = grant_store::resolve_grant(&grant_id)
-            .map_err(|error| format!("{error}"))?;
+        let base = grant_store::resolve_grant(&grant_id).map_err(|error| format!("{error}"))?;
         fs::copy(&base, &from, &to).map_err(|error| format!("fs copy failed: {error}"))
     })();
 
@@ -278,9 +320,9 @@ fn scoped_copy(grant_id: String, from: String, to: String, context: &mut Context
 fn scoped_read_file_binary(grant_id: String, path: String, context: &mut Context) -> JsValue {
     let result = (|| {
         require_permission(Permission::FileSystem).map_err(super::format_js_error)?;
-        let base = grant_store::resolve_grant(&grant_id)
-            .map_err(|error| format!("{error}"))?;
-        let data = fs::read_file(&base, &path).map_err(|error| format!("fs read failed: {error}"))?;
+        let base = grant_store::resolve_grant(&grant_id).map_err(|error| format!("{error}"))?;
+        let data =
+            fs::read_file(&base, &path).map_err(|error| format!("fs read failed: {error}"))?;
         Ok(serde_json::json!(data))
     })();
 
@@ -330,8 +372,7 @@ fn scoped_watch_start(
 ) -> JsValue {
     let result = (|| {
         require_permission(Permission::FileSystem).map_err(super::format_js_error)?;
-        let base = grant_store::resolve_grant(&grant_id)
-            .map_err(|error| format!("{error}"))?;
+        let base = grant_store::resolve_grant(&grant_id).map_err(|error| format!("{error}"))?;
         let target = if subpath.is_empty() {
             base
         } else {
