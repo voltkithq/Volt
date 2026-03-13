@@ -63,7 +63,7 @@ Volt sits between Electron and Tauri. You get Electron-style TypeScript app auth
 - **Native-backed fast paths** -- `data` and `workflow` APIs for heavy queries and pipeline execution without writing Rust
 - **Built-in updater** -- Ed25519 signed updates with SHA-256 verification, no third-party services required
 - **Embedded SQLite** -- `volt:db` module for local storage without external dependencies
-- **Secure file access** -- scoped `volt:fs` module with path restrictions
+- **Secure file access** -- scoped `volt:fs` with grant tokens, `ScopedFs` handles, and file watching
 - **Dev experience** -- Vite-powered HMR in dev, single binary output in production
 - **Cross-platform** -- Windows, macOS (Intel + Apple Silicon), Linux
 
@@ -91,7 +91,7 @@ my-app/
 Example backend:
 
 ```typescript
-import { ipcMain } from 'voltkit';
+import { ipcMain } from 'volt:ipc';
 
 ipcMain.handle('get-users', async () => {
   return [
@@ -104,12 +104,30 @@ ipcMain.handle('get-users', async () => {
 Example frontend:
 
 ```typescript
-import { data, invoke, workflow } from 'voltkit/renderer';
-
-const users = await invoke('get-users');
-const profile = await data.profile({ datasetSize: 12_000 });
-const result = await workflow.run({ batchSize: 3_000, passes: 3 });
+const users = await window.__volt__.invoke('get-users');
 ```
+
+### Sandboxed File Access (grant flow)
+
+Let users pick a folder, then read/write files within it — no hardcoded paths, no escape:
+
+```typescript
+// backend.ts
+import { showOpenWithGrant } from 'volt:dialog';
+import { bindScope } from 'volt:fs';
+import { ipcMain } from 'volt:ipc';
+
+ipcMain.handle('open-folder', async () => {
+  const result = await showOpenWithGrant({ title: 'Open Folder' });
+  if (!result.grantIds.length) return { ok: false };
+
+  const fs = await bindScope(result.grantIds[0]);
+  const files = await fs.readDir('');
+  return { ok: true, files };
+});
+```
+
+> See the [file-explorer example](examples/file-explorer/) for a complete app with folder picking, file listing, and live file watching.
 
 ## Status
 

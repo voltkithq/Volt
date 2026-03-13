@@ -71,11 +71,21 @@ pub fn require_permission(permission: Permission) -> napi::Result<()> {
         .map_err(|e| napi::Error::from_reason(format!("Permission guard lock poisoned: {e}")))?;
 
     guard.check(permission).map_err(|err| {
+        let hint = permission_hint(permission);
         napi::Error::from_reason(format!(
-            "Permission denied: {err}. Add '{}' to permissions in volt.config.ts.",
-            permission.as_str()
+            "Permission denied: {err}. Add '{name}' to permissions in volt.config.ts.{hint}",
+            name = permission.as_str(),
         ))
     })
+}
+
+fn permission_hint(permission: Permission) -> &'static str {
+    match permission {
+        Permission::Dialog => "\n  Hint: Apps that open files typically need both 'dialog' and 'fs'.",
+        Permission::FileSystem => "\n  Hint: For user-selected folders, also add 'dialog' to use showOpenWithGrant().",
+        Permission::Database => "\n  Hint: The 'db' permission enables the volt:db SQLite module (backend only).",
+        _ => "",
+    }
 }
 
 #[cfg(test)]

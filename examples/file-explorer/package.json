@@ -1,0 +1,20 @@
+{
+  "name": "file-explorer",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "volt dev",
+    "build": "volt build",
+    "lint": "echo ok",
+    "test": "echo ok"
+  },
+  "dependencies": {
+    "voltkit": "workspace:*"
+  },
+  "devDependencies": {
+    "@voltkit/volt-cli": "workspace:*",
+    "vite": "^6.0.0",
+    "typescript": "^5.7.0"
+  }
+}
