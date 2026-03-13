@@ -56,6 +56,16 @@ declare module '@voltkit/volt-native' {
   /** Show an open file/folder dialog. Returns selected paths. */
   export function dialogShowOpen(options: NativeOpenDialogOptions): string[];
 
+  /** Result from a grant-aware open dialog. */
+  export interface GrantDialogResult {
+    paths: string[];
+    grantIds: string[];
+  }
+
+  /** Show an open folder dialog that creates filesystem scope grants.
+   *  Requires both `dialog` and `fs` permissions. */
+  export function dialogShowOpenWithGrant(options: NativeOpenDialogOptions): GrantDialogResult;
+
   /** Show a save file dialog. Returns path or null if cancelled. */
   export function dialogShowSave(options: NativeSaveDialogOptions): string | null;
 
@@ -81,6 +91,9 @@ declare module '@voltkit/volt-native' {
 
   /** Check whether a path exists within the base scope. */
   export function fsExists(baseDir: string, path: string): boolean;
+
+  /** Resolve a grant ID to its root path string. Throws if the grant is invalid. */
+  export function fsResolveGrant(grantId: string): string;
 
   /** Create a directory and parents. */
   export function fsMkdir(baseDir: string, path: string): void;

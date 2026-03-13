@@ -15,6 +15,7 @@ import {
   fsExists,
   fsMkdir,
   fsRemove,
+  fsResolveGrant,
 } from '@voltkit/volt-native';
 
 describe('fs module', () => {
@@ -179,6 +180,72 @@ describe('fs module', () => {
     it('calls native fsRemove', async () => {
       await fs.remove('old-file.txt');
       expect(fsRemove).toHaveBeenCalledWith('/mock/base', 'old-file.txt');
+    });
+  });
+
+  describe('bindScope', () => {
+    it('resolves grant and returns scoped handle', async () => {
+      const scopedFs = await fs.bindScope('test_grant_123');
+      expect(fsResolveGrant).toHaveBeenCalledWith('test_grant_123');
+      expect(scopedFs).toBeDefined();
+      expect(typeof scopedFs.readFile).toBe('function');
+      expect(typeof scopedFs.readFileBinary).toBe('function');
+      expect(typeof scopedFs.readDir).toBe('function');
+      expect(typeof scopedFs.stat).toBe('function');
+      expect(typeof scopedFs.exists).toBe('function');
+    });
+
+    it('scoped readFile calls native with grant path', async () => {
+      const scopedFs = await fs.bindScope('test_grant_456');
+      await scopedFs.readFile('notes/readme.md');
+      expect(fsReadFileText).toHaveBeenCalledWith('/mock/grant/path', 'notes/readme.md');
+    });
+
+    it('scoped readDir calls native with grant path', async () => {
+      const scopedFs = await fs.bindScope('test_grant_789');
+      await scopedFs.readDir('notes');
+      expect(fsReadDir).toHaveBeenCalledWith('/mock/grant/path', 'notes');
+    });
+
+    it('scoped stat calls native with grant path', async () => {
+      const scopedFs = await fs.bindScope('test_grant_stat');
+      const info = await scopedFs.stat('test.md');
+      expect(fsStat).toHaveBeenCalledWith('/mock/grant/path', 'test.md');
+      expect(info.modifiedMs).toBe(1700000000000);
+    });
+
+    it('scoped exists calls native with grant path', async () => {
+      const scopedFs = await fs.bindScope('test_grant_exists');
+      const result = await scopedFs.exists('test.md');
+      expect(fsExists).toHaveBeenCalledWith('/mock/grant/path', 'test.md');
+      expect(result).toBe(true);
+    });
+
+    it('scoped readDir allows empty string for scope root', async () => {
+      const scopedFs = await fs.bindScope('test_grant_root');
+      await scopedFs.readDir('');
+      expect(fsReadDir).toHaveBeenCalledWith('/mock/grant/path', '');
+    });
+
+    it('rejects empty grant ID', async () => {
+      await expect(fs.bindScope('')).rejects.toThrow('FS_SCOPE_INVALID');
+    });
+
+    it('rejects invalid grant ID from native', async () => {
+      vi.mocked(fsResolveGrant).mockImplementationOnce(() => {
+        throw new Error('FS_SCOPE_INVALID: grant ID not found or expired');
+      });
+      await expect(fs.bindScope('bad_grant')).rejects.toThrow('FS_SCOPE_INVALID');
+    });
+
+    it('scoped readFile rejects path traversal', async () => {
+      const scopedFs = await fs.bindScope('test_grant_traversal');
+      await expect(scopedFs.readFile('../../etc/passwd')).rejects.toThrow('Path traversal');
+    });
+
+    it('scoped readFile rejects absolute paths', async () => {
+      const scopedFs = await fs.bindScope('test_grant_abs');
+      await expect(scopedFs.readFile('/etc/passwd')).rejects.toThrow('Absolute paths');
     });
   });
 });

@@ -7,6 +7,7 @@ vi.mock('@voltkit/volt-native', async () => {
 import { dialog } from '../dialog.js';
 import {
   dialogShowOpen,
+  dialogShowOpenWithGrant,
   dialogShowSave,
   dialogShowMessage,
 } from '@voltkit/volt-native';
@@ -105,6 +106,42 @@ describe('dialog module', () => {
       vi.mocked(dialogShowMessage).mockReturnValueOnce(false);
       const result = await dialog.showMessageBox({ message: 'test' });
       expect(result.confirmed).toBe(false);
+    });
+  });
+
+  describe('showOpenDialog with grantFsScope', () => {
+    it('returns scope grants when grantFsScope is true', async () => {
+      const result = await dialog.showOpenDialog({
+        directory: true,
+        grantFsScope: true,
+      });
+      expect(result.canceled).toBe(false);
+      expect(result.filePaths).toEqual(['/mock/workspace']);
+      expect(result.scopeGrants).toBeDefined();
+      expect(result.scopeGrants).toHaveLength(1);
+      expect(result.scopeGrants![0].id).toBe('mock_grant_001');
+      expect(result.scopeGrants![0].kind).toBe('directory');
+      expect(dialogShowOpenWithGrant).toHaveBeenCalled();
+    });
+
+    it('returns canceled when grant dialog returns empty', async () => {
+      vi.mocked(dialogShowOpenWithGrant).mockReturnValueOnce({
+        paths: [],
+        grantIds: [],
+      });
+      const result = await dialog.showOpenDialog({
+        grantFsScope: true,
+      });
+      expect(result.canceled).toBe(true);
+      expect(result.scopeGrants).toEqual([]);
+    });
+
+    it('does not return scopeGrants when grantFsScope is false', async () => {
+      const result = await dialog.showOpenDialog({
+        directory: true,
+      });
+      expect(result.scopeGrants).toBeUndefined();
+      expect(dialogShowOpen).toHaveBeenCalled();
     });
   });
 });

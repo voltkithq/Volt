@@ -16,6 +16,7 @@ import {
   fsExists,
   fsMkdir,
   fsRemove,
+  fsResolveGrant,
 } from '@voltkit/volt-native';
 
 /** File metadata returned by stat(). */
@@ -154,6 +155,89 @@ function validatePath(path: string): void {
   }
 }
 
+/** A read-only scoped file handle bound to a grant. */
+export interface ScopedFs {
+  readFile(path: string): Promise<string>;
+  readFileBinary(path: string): Promise<Uint8Array>;
+  readDir(path: string): Promise<string[]>;
+  stat(path: string): Promise<FileInfo>;
+  exists(path: string): Promise<boolean>;
+}
+
+/**
+ * Bind a filesystem scope grant to create a scoped read-only handle.
+ * The grant must have been created by a `showOpenDialog({ grantFsScope: true })` call.
+ *
+ * @example
+ * ```ts
+ * import { bindScope } from 'voltkit';
+ * const scopedFs = await bindScope(grantId);
+ * const entries = await scopedFs.readDir('');
+ * ```
+ */
+async function bindScope(grantId: string): Promise<ScopedFs> {
+  if (!grantId || typeof grantId !== 'string') {
+    throw new Error('FS_SCOPE_INVALID: grant ID must be a non-empty string');
+  }
+
+  // Validate the grant exists by looking it up in the native store.
+  // For the N-API layer, the grant was created via dialogShowOpenWithGrant
+  // and its root path is stored in the global grant_store.
+  // We use the grant ID to resolve the base path for all scoped ops.
+  const grantBasePath = resolveGrantPath(grantId);
+
+  return {
+    async readFile(path: string): Promise<string> {
+      validatePath(path);
+      return fsReadFileText(grantBasePath, path);
+    },
+    async readFileBinary(path: string): Promise<Uint8Array> {
+      validatePath(path);
+      const buf = fsReadFile(grantBasePath, path);
+      return new Uint8Array(buf);
+    },
+    async readDir(path: string): Promise<string[]> {
+      validateScopedPath(path);
+      return fsReadDir(grantBasePath, path);
+    },
+    async stat(path: string): Promise<FileInfo> {
+      validateScopedPath(path);
+      const info = fsStat(grantBasePath, path);
+      return {
+        size: info.size,
+        isFile: info.isFile,
+        isDir: info.isDir,
+        readonly: info.readonly,
+        modifiedMs: info.modifiedMs,
+        createdMs: info.createdMs ?? null,
+      };
+    },
+    async exists(path: string): Promise<boolean> {
+      validateScopedPath(path);
+      return fsExists(grantBasePath, path);
+    },
+  };
+}
+
+/**
+ * Resolve a grant ID to its root path using the native grant store.
+ * Throws if the grant is invalid or expired.
+ */
+function resolveGrantPath(grantId: string): string {
+  // The native grant store is in Rust. We need a way to look up the path.
+  // For the N-API layer, we use a dedicated native function.
+  return fsResolveGrant(grantId);
+}
+
+/**
+ * Validate a scoped path. Unlike validatePath, this allows empty strings
+ * (to reference the scope root directory itself for readDir/stat/exists).
+ */
+function validateScopedPath(path: string): void {
+  if (path === '') return; // empty = scope root, valid for readDir/stat/exists
+  validatePath(path);
+}
+
 /** Sandboxed file system APIs. Requires `permissions: ['fs']` in volt.config.ts. */
 export const fs = {
   readFile,
@@ -165,4 +249,5 @@ export const fs = {
   exists,
   mkdir,
   remove,
+  bindScope,
 };

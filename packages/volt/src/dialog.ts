@@ -11,6 +11,7 @@ import {
   type NativeOpenDialogOptions,
   type NativeSaveDialogOptions,
   dialogShowOpen,
+  dialogShowOpenWithGrant,
   dialogShowSave,
   dialogShowMessage,
 } from '@voltkit/volt-native';
@@ -35,6 +36,17 @@ export interface OpenDialogOptions {
   multiSelections?: boolean;
   /** Allow selecting directories instead of files. Default: false. */
   directory?: boolean;
+  /** When true, creates filesystem scope grants for selected directories.
+   *  Forces directory mode. Requires both `dialog` and `fs` permissions. */
+  grantFsScope?: boolean;
+}
+
+/** A filesystem scope grant created by a grant-aware dialog. */
+export interface FileScopeGrant {
+  /** Opaque grant ID. Pass this to backend via IPC for `bindScope()`. */
+  id: string;
+  /** The kind of grant (always 'directory' in v1). */
+  kind: 'directory';
 }
 
 /** Result from showOpenDialog. */
@@ -43,6 +55,8 @@ export interface OpenDialogResult {
   canceled: boolean;
   /** Selected file paths (empty if cancelled). */
   filePaths: string[];
+  /** Scope grants for selected directories (only present when grantFsScope was true). */
+  scopeGrants?: FileScopeGrant[];
 }
 
 /** Options for the save file dialog. */
@@ -108,6 +122,20 @@ async function showOpenDialog(
     multiple: options.multiSelections ?? false,
     directory: options.directory ?? false,
   };
+
+  if (options.grantFsScope) {
+    // Use grant-aware dialog — forces directory mode
+    const result = dialogShowOpenWithGrant(nativeOpts);
+    const scopeGrants: FileScopeGrant[] = result.grantIds.map((id) => ({
+      id,
+      kind: 'directory' as const,
+    }));
+    return {
+      canceled: result.paths.length === 0,
+      filePaths: result.paths,
+      scopeGrants,
+    };
+  }
 
   const filePaths = dialogShowOpen(nativeOpts);
   return {

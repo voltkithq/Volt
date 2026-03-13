@@ -136,9 +136,15 @@ declare module 'volt:dialog' {
     buttons?: string[];
   }
 
+  export interface GrantDialogResult {
+    paths: string[];
+    grantIds: string[];
+  }
+
   export function showOpen(options?: OpenDialogOptions): Promise<string | null>;
   export function showSave(options?: SaveDialogOptions): Promise<string | null>;
   export function showMessage(options: MessageDialogOptions): Promise<0 | 1>;
+  export function showOpenWithGrant(options?: OpenDialogOptions): Promise<GrantDialogResult>;
 }
 
 declare module 'volt:fs' {
@@ -151,6 +157,15 @@ declare module 'volt:fs' {
     createdMs: number | null;
   }
 
+  /** A read-only scoped file handle bound to a grant. */
+  export interface ScopedFs {
+    readFile(path: string): Promise<string>;
+    readFileBinary(path: string): Promise<Uint8Array>;
+    readDir(path: string): Promise<string[]>;
+    stat(path: string): Promise<FileInfo>;
+    exists(path: string): Promise<boolean>;
+  }
+
   export function readFile(path: string): Promise<string>;
   export function writeFile(path: string, data: string): Promise<void>;
   export function readDir(path: string): Promise<string[]>;
@@ -158,6 +173,16 @@ declare module 'volt:fs' {
   export function exists(path: string): Promise<boolean>;
   export function mkdir(path: string): Promise<void>;
   export function remove(path: string): Promise<void>;
+
+  /** Validate a grant and bind a scoped read-only handle. */
+  export function bindScope(grantId: string): Promise<string>;
+
+  /** Scoped read operations — use the grant ID from bindScope(). */
+  export function scopedReadFile(grantId: string, path: string): Promise<string>;
+  export function scopedReadFileBinary(grantId: string, path: string): Promise<Uint8Array>;
+  export function scopedReadDir(grantId: string, path: string): Promise<string[]>;
+  export function scopedStat(grantId: string, path: string): Promise<FileInfo>;
+  export function scopedExists(grantId: string, path: string): Promise<boolean>;
 }
 
 declare module 'volt:http' {

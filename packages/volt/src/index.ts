@@ -64,10 +64,11 @@ export type {
   MessageBoxOptions,
   MessageBoxResult,
   FileFilter,
+  FileScopeGrant,
 } from './dialog.js';
 export type { ClipboardImage } from './clipboard.js';
 export type { NotificationOptions } from './notification.js';
-export type { FileInfo } from './fs.js';
+export type { FileInfo, ScopedFs } from './fs.js';
 export type { DataProfile, DataProfileOptions, DataQueryOptions, DataQueryResult } from './data.js';
 export type { UpdateInfo } from './updater.js';
 export type { WorkflowPluginInfo, WorkflowRunOptions, WorkflowRunResult } from './workflow.js';

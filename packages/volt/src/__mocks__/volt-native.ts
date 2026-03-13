@@ -104,6 +104,12 @@ export const dialogShowSave = vi.fn(
 export const dialogShowMessage = vi.fn(
   (_options: NativeMessageDialogOptions) => true,
 );
+export const dialogShowOpenWithGrant = vi.fn(
+  (_options: NativeOpenDialogOptions) => ({
+    paths: ['/mock/workspace'],
+    grantIds: ['mock_grant_001'],
+  }),
+);
 
 // ── File System ────────────────────────────────────────────────────────
 
@@ -134,6 +140,9 @@ export const fsExists = vi.fn(
 );
 export const fsMkdir = vi.fn((_baseDir: string, _path: string) => {});
 export const fsRemove = vi.fn((_baseDir: string, _path: string) => {});
+export const fsResolveGrant = vi.fn(
+  (_grantId: string) => '/mock/grant/path',
+);
 
 // ── Shell ──────────────────────────────────────────────────────────────
 

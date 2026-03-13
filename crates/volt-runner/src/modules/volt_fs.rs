@@ -1,5 +1,6 @@
 use boa_engine::{Context, IntoJsFunctionCopied, JsValue, Module};
 use volt_core::fs;
+use volt_core::grant_store;
 use volt_core::permissions::Permission;
 
 use super::{
@@ -86,6 +87,81 @@ fn remove(path: String, context: &mut Context) -> JsValue {
     promise_from_result(context, result).into()
 }
 
+fn bind_scope(grant_id: String, context: &mut Context) -> JsValue {
+    let result = (|| {
+        require_permission(Permission::FileSystem).map_err(super::format_js_error)?;
+        grant_store::resolve_grant(&grant_id)
+            .map_err(|error| format!("{error}"))?;
+        Ok(grant_id)
+    })();
+
+    promise_from_result(context, result).into()
+}
+
+fn scoped_read_file(grant_id: String, path: String, context: &mut Context) -> JsValue {
+    let result = (|| {
+        require_permission(Permission::FileSystem).map_err(super::format_js_error)?;
+        let base = grant_store::resolve_grant(&grant_id)
+            .map_err(|error| format!("{error}"))?;
+        fs::read_file_text(&base, &path).map_err(|error| format!("fs read failed: {error}"))
+    })();
+
+    promise_from_json_result(context, result.map(serde_json::Value::String)).into()
+}
+
+fn scoped_read_dir(grant_id: String, path: String, context: &mut Context) -> JsValue {
+    let result = (|| {
+        require_permission(Permission::FileSystem).map_err(super::format_js_error)?;
+        let base = grant_store::resolve_grant(&grant_id)
+            .map_err(|error| format!("{error}"))?;
+        fs::read_dir(&base, &path).map_err(|error| format!("fs read dir failed: {error}"))
+    })();
+
+    promise_from_json_result(context, result.map(|entries| serde_json::json!(entries))).into()
+}
+
+fn scoped_stat(grant_id: String, path: String, context: &mut Context) -> JsValue {
+    let result = (|| {
+        require_permission(Permission::FileSystem).map_err(super::format_js_error)?;
+        let base = grant_store::resolve_grant(&grant_id)
+            .map_err(|error| format!("{error}"))?;
+        let info = fs::stat(&base, &path).map_err(|error| format!("fs stat failed: {error}"))?;
+        Ok(serde_json::json!({
+            "size": info.size,
+            "isFile": info.is_file,
+            "isDir": info.is_dir,
+            "readonly": info.readonly,
+            "modifiedMs": info.modified_ms,
+            "createdMs": info.created_ms,
+        }))
+    })();
+
+    promise_from_json_result(context, result).into()
+}
+
+fn scoped_exists(grant_id: String, path: String, context: &mut Context) -> JsValue {
+    let result = (|| {
+        require_permission(Permission::FileSystem).map_err(super::format_js_error)?;
+        let base = grant_store::resolve_grant(&grant_id)
+            .map_err(|error| format!("{error}"))?;
+        fs::exists(&base, &path).map_err(|error| format!("fs exists failed: {error}"))
+    })();
+
+    promise_from_result(context, result).into()
+}
+
+fn scoped_read_file_binary(grant_id: String, path: String, context: &mut Context) -> JsValue {
+    let result = (|| {
+        require_permission(Permission::FileSystem).map_err(super::format_js_error)?;
+        let base = grant_store::resolve_grant(&grant_id)
+            .map_err(|error| format!("{error}"))?;
+        let data = fs::read_file(&base, &path).map_err(|error| format!("fs read failed: {error}"))?;
+        Ok(serde_json::json!(data))
+    })();
+
+    promise_from_json_result(context, result).into()
+}
+
 pub fn build_module(context: &mut Context) -> Module {
     let read_file = read_file.into_js_function_copied(context);
     let write_file = write_file.into_js_function_copied(context);
@@ -94,6 +170,12 @@ pub fn build_module(context: &mut Context) -> Module {
     let stat = stat.into_js_function_copied(context);
     let mkdir = mkdir.into_js_function_copied(context);
     let remove = remove.into_js_function_copied(context);
+    let bind_scope = bind_scope.into_js_function_copied(context);
+    let scoped_read_file = scoped_read_file.into_js_function_copied(context);
+    let scoped_read_dir = scoped_read_dir.into_js_function_copied(context);
+    let scoped_stat = scoped_stat.into_js_function_copied(context);
+    let scoped_exists = scoped_exists.into_js_function_copied(context);
+    let scoped_read_file_binary = scoped_read_file_binary.into_js_function_copied(context);
 
     native_function_module(
         context,
@@ -105,6 +187,12 @@ pub fn build_module(context: &mut Context) -> Module {
             ("stat", stat),
             ("mkdir", mkdir),
             ("remove", remove),
+            ("bindScope", bind_scope),
+            ("scopedReadFile", scoped_read_file),
+            ("scopedReadDir", scoped_read_dir),
+            ("scopedStat", scoped_stat),
+            ("scopedExists", scoped_exists),
+            ("scopedReadFileBinary", scoped_read_file_binary),
         ],
     )
 }

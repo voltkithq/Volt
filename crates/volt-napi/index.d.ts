@@ -109,6 +109,13 @@ export declare function dialogShowMessage(options: any): boolean
 /** Show an open file/folder dialog. Returns selected paths, or empty array if cancelled. */
 export declare function dialogShowOpen(options: any): Array<string>
 
+/**
+ * Show an open folder dialog that creates filesystem scope grants for selected directories.
+ * Requires both `dialog` and `fs` permissions.
+ * Returns paths and corresponding grant IDs, or empty arrays if cancelled.
+ */
+export declare function dialogShowOpenWithGrant(options: any): GrantDialogResult
+
 /** Show a save file dialog. Returns the selected path, or null if cancelled. */
 export declare function dialogShowSave(options: any): string | null
 
@@ -130,11 +137,25 @@ export declare function fsReadFileText(baseDir: string, path: string): string
 /** Remove a file or directory. Path is relative to the base scope directory. */
 export declare function fsRemove(baseDir: string, path: string): void
 
+/**
+ * Resolve a grant ID to its root path string.
+ * Returns the absolute path for the grant, or throws if the grant is invalid.
+ */
+export declare function fsResolveGrant(grantId: string): string
+
 /** Get file/directory metadata. Path is relative to the base scope directory. */
 export declare function fsStat(baseDir: string, path: string): VoltFileInfo
 
 /** Write data to a file. Path is relative to the base scope directory. */
 export declare function fsWriteFile(baseDir: string, path: string, data: Buffer): void
+
+/** Result from a grant-aware open dialog. */
+export interface GrantDialogResult {
+  /** Selected file/directory paths. */
+  paths: Array<string>
+  /** Grant IDs corresponding to each selected path (only for directories). */
+  grantIds: Array<string>
+}
 
 /**
  * Show a native OS notification.

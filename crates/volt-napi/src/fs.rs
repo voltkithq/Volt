@@ -2,6 +2,7 @@ use napi::bindgen_prelude::Buffer;
 use napi_derive::napi;
 use std::path::Path;
 use volt_core::fs;
+use volt_core::grant_store;
 use volt_core::permissions::Permission;
 
 use crate::permissions::require_permission;
@@ -85,6 +86,16 @@ pub fn fs_exists(base_dir: String, path: String) -> napi::Result<bool> {
     require_permission(Permission::FileSystem)?;
     fs::exists(Path::new(&base_dir), &path)
         .map_err(|e| napi::Error::from_reason(format!("fs exists failed: {e}")))
+}
+
+/// Resolve a grant ID to its root path string.
+/// Returns the absolute path for the grant, or throws if the grant is invalid.
+#[napi]
+pub fn fs_resolve_grant(grant_id: String) -> napi::Result<String> {
+    require_permission(Permission::FileSystem)?;
+    let path = grant_store::resolve_grant(&grant_id)
+        .map_err(|e| napi::Error::from_reason(format!("{e}")))?;
+    Ok(path.to_string_lossy().into_owned())
 }
 
 /// Create a directory (and parents). Path is relative to the base scope directory.
