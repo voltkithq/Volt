@@ -79,6 +79,9 @@ declare module '@voltkit/volt-native' {
   /** Get file metadata. */
   export function fsStat(baseDir: string, path: string): NativeFileInfo;
 
+  /** Check whether a path exists within the base scope. */
+  export function fsExists(baseDir: string, path: string): boolean;
+
   /** Create a directory and parents. */
   export function fsMkdir(baseDir: string, path: string): void;
 
@@ -91,6 +94,10 @@ declare module '@voltkit/volt-native' {
     isFile: boolean;
     isDir: boolean;
     readonly: boolean;
+    /** Last modification time as milliseconds since Unix epoch. */
+    modifiedMs: number;
+    /** Creation time as milliseconds since Unix epoch, or null if unavailable. */
+    createdMs: number | null;
   }
 
   // ── Shell ──────────────────────────────────────────────────────────────

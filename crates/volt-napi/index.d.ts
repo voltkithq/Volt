@@ -112,6 +112,9 @@ export declare function dialogShowOpen(options: any): Array<string>
 /** Show a save file dialog. Returns the selected path, or null if cancelled. */
 export declare function dialogShowSave(options: any): string | null
 
+/** Check whether a path exists within the base scope directory. */
+export declare function fsExists(baseDir: string, path: string): boolean
+
 /** Create a directory (and parents). Path is relative to the base scope directory. */
 export declare function fsMkdir(baseDir: string, path: string): void
 
@@ -170,6 +173,10 @@ export interface VoltFileInfo {
   isDir: boolean
   /** Whether the file is read-only. */
   readonly: boolean
+  /** Last modification time as milliseconds since Unix epoch. */
+  modifiedMs: number
+  /** Creation time as milliseconds since Unix epoch, or null if unavailable. */
+  createdMs?: number
 }
 
 /** Image data returned from clipboard operations. */

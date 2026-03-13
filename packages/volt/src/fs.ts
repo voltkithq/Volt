@@ -13,6 +13,7 @@ import {
   fsWriteFile,
   fsReadDir,
   fsStat,
+  fsExists,
   fsMkdir,
   fsRemove,
 } from '@voltkit/volt-native';
@@ -27,6 +28,10 @@ export interface FileInfo {
   isDir: boolean;
   /** Whether the file is read-only. */
   readonly: boolean;
+  /** Last modification time as milliseconds since Unix epoch. */
+  modifiedMs: number;
+  /** Creation time as milliseconds since Unix epoch, or null if unavailable. */
+  createdMs: number | null;
 }
 
 /**
@@ -92,7 +97,22 @@ async function stat(path: string): Promise<FileInfo> {
     isFile: info.isFile,
     isDir: info.isDir,
     readonly: info.readonly,
+    modifiedMs: info.modifiedMs,
+    createdMs: info.createdMs ?? null,
   };
+}
+
+/**
+ * Check whether a path exists within the app scope.
+ *
+ * @example
+ * ```ts
+ * if (await fs.exists('data/config.json')) { ... }
+ * ```
+ */
+async function exists(path: string): Promise<boolean> {
+  validatePath(path);
+  return fsExists(baseDir, path);
 }
 
 /** Create a directory (and parent directories if needed). */
@@ -142,6 +162,7 @@ export const fs = {
   writeFileBinary,
   readDir,
   stat,
+  exists,
   mkdir,
   remove,
 };

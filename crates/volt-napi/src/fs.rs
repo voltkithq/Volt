@@ -17,6 +17,10 @@ pub struct VoltFileInfo {
     pub is_dir: bool,
     /// Whether the file is read-only.
     pub readonly: bool,
+    /// Last modification time as milliseconds since Unix epoch.
+    pub modified_ms: f64,
+    /// Creation time as milliseconds since Unix epoch, or null if unavailable.
+    pub created_ms: Option<f64>,
 }
 
 /// Read a file as raw bytes. Path is relative to the base scope directory.
@@ -70,7 +74,17 @@ pub fn fs_stat(base_dir: String, path: String) -> napi::Result<VoltFileInfo> {
         is_file: info.is_file,
         is_dir: info.is_dir,
         readonly: info.readonly,
+        modified_ms: info.modified_ms,
+        created_ms: info.created_ms,
     })
+}
+
+/// Check whether a path exists within the base scope directory.
+#[napi]
+pub fn fs_exists(base_dir: String, path: String) -> napi::Result<bool> {
+    require_permission(Permission::FileSystem)?;
+    fs::exists(Path::new(&base_dir), &path)
+        .map_err(|e| napi::Error::from_reason(format!("fs exists failed: {e}")))
 }
 
 /// Create a directory (and parents). Path is relative to the base scope directory.

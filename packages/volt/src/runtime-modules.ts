@@ -142,9 +142,19 @@ declare module 'volt:dialog' {
 }
 
 declare module 'volt:fs' {
+  export interface FileInfo {
+    size: number;
+    isFile: boolean;
+    isDir: boolean;
+    readonly: boolean;
+    modifiedMs: number;
+    createdMs: number | null;
+  }
+
   export function readFile(path: string): Promise<string>;
   export function writeFile(path: string, data: string): Promise<void>;
   export function readDir(path: string): Promise<string[]>;
+  export function stat(path: string): Promise<FileInfo>;
   export function exists(path: string): Promise<boolean>;
   export function mkdir(path: string): Promise<void>;
   export function remove(path: string): Promise<void>;

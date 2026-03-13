@@ -125,7 +125,12 @@ export const fsStat = vi.fn(
     isFile: true,
     isDir: false,
     readonly: false,
+    modifiedMs: 1700000000000,
+    createdMs: 1699000000000,
   }),
+);
+export const fsExists = vi.fn(
+  (_baseDir: string, _path: string) => true,
 );
 export const fsMkdir = vi.fn((_baseDir: string, _path: string) => {});
 export const fsRemove = vi.fn((_baseDir: string, _path: string) => {});

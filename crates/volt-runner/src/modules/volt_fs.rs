@@ -42,12 +42,28 @@ fn exists(path: String, context: &mut Context) -> JsValue {
     let result = (|| {
         require_permission(Permission::FileSystem).map_err(super::format_js_error)?;
         let base = fs_base_dir()?;
-        let resolved =
-            fs::safe_resolve(&base, &path).map_err(|error| format!("fs exists failed: {error}"))?;
-        Ok(resolved.exists())
+        fs::exists(&base, &path).map_err(|error| format!("fs exists failed: {error}"))
     })();
 
     promise_from_result(context, result).into()
+}
+
+fn stat(path: String, context: &mut Context) -> JsValue {
+    let result = (|| {
+        require_permission(Permission::FileSystem).map_err(super::format_js_error)?;
+        let base = fs_base_dir()?;
+        let info = fs::stat(&base, &path).map_err(|error| format!("fs stat failed: {error}"))?;
+        Ok(serde_json::json!({
+            "size": info.size,
+            "isFile": info.is_file,
+            "isDir": info.is_dir,
+            "readonly": info.readonly,
+            "modifiedMs": info.modified_ms,
+            "createdMs": info.created_ms,
+        }))
+    })();
+
+    promise_from_json_result(context, result).into()
 }
 
 fn mkdir(path: String, context: &mut Context) -> JsValue {
@@ -75,6 +91,7 @@ pub fn build_module(context: &mut Context) -> Module {
     let write_file = write_file.into_js_function_copied(context);
     let read_dir = read_dir.into_js_function_copied(context);
     let exists = exists.into_js_function_copied(context);
+    let stat = stat.into_js_function_copied(context);
     let mkdir = mkdir.into_js_function_copied(context);
     let remove = remove.into_js_function_copied(context);
 
@@ -85,6 +102,7 @@ pub fn build_module(context: &mut Context) -> Module {
             ("writeFile", write_file),
             ("readDir", read_dir),
             ("exists", exists),
+            ("stat", stat),
             ("mkdir", mkdir),
             ("remove", remove),
         ],

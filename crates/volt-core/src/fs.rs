@@ -1,6 +1,7 @@
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::time::UNIX_EPOCH;
 use thiserror::Error;
 
 use crate::security::validate_path;
@@ -134,16 +135,38 @@ pub fn read_dir(base: &Path, path: &str) -> Result<Vec<String>, FsError> {
     Ok(entries)
 }
 
-/// Get metadata (size, is_file, is_dir) for a path.
+/// Get metadata for a path.
 pub fn stat(base: &Path, path: &str) -> Result<FileInfo, FsError> {
     let resolved = safe_resolve(base, path)?;
     let meta = fs::metadata(resolved)?;
+
+    let modified_ms = meta
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .map(|d| d.as_secs_f64() * 1000.0)
+        .unwrap_or(0.0);
+
+    let created_ms = meta
+        .created()
+        .ok()
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .map(|d| d.as_secs_f64() * 1000.0);
+
     Ok(FileInfo {
         size: meta.len(),
         is_file: meta.is_file(),
         is_dir: meta.is_dir(),
         readonly: meta.permissions().readonly(),
+        modified_ms,
+        created_ms,
     })
+}
+
+/// Check whether a path exists within the scoped base directory.
+pub fn exists(base: &Path, path: &str) -> Result<bool, FsError> {
+    let resolved = safe_resolve(base, path)?;
+    Ok(resolved.exists())
 }
 
 /// File metadata info returned by stat().
@@ -153,6 +176,11 @@ pub struct FileInfo {
     pub is_file: bool,
     pub is_dir: bool,
     pub readonly: bool,
+    /// Last modification time as milliseconds since Unix epoch.
+    pub modified_ms: f64,
+    /// Creation time as milliseconds since Unix epoch.
+    /// `None` on platforms/filesystems that do not support birth time.
+    pub created_ms: Option<f64>,
 }
 
 /// Create a directory (and parents if needed).
@@ -448,5 +476,46 @@ mod tests {
         assert!(base.exists());
 
         let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn test_stat_returns_timestamps() {
+        let base = env::temp_dir();
+        let file = "volt_test_stat_timestamps.txt";
+        write_file(&base, file, b"timestamp test").unwrap();
+
+        let info = stat(&base, file).unwrap();
+        assert!(info.modified_ms > 0.0, "modified_ms should be positive");
+        // created_ms may be None on some Linux filesystems, but should be
+        // Some on Windows and macOS.
+        #[cfg(any(target_os = "windows", target_os = "macos"))]
+        assert!(info.created_ms.is_some(), "created_ms should be available");
+
+        // Clean up
+        remove(&base, file).unwrap();
+    }
+
+    #[test]
+    fn test_exists_returns_true_for_existing_file() {
+        let base = env::temp_dir();
+        let file = "volt_test_exists_true.txt";
+        write_file(&base, file, b"exists").unwrap();
+
+        assert!(exists(&base, file).unwrap());
+
+        // Clean up
+        remove(&base, file).unwrap();
+    }
+
+    #[test]
+    fn test_exists_returns_false_for_missing_file() {
+        let base = env::temp_dir();
+        assert!(!exists(&base, "volt_test_exists_missing_12345.txt").unwrap());
+    }
+
+    #[test]
+    fn test_exists_rejects_traversal() {
+        let base = env::temp_dir();
+        assert!(exists(&base, "../../etc/passwd").is_err());
     }
 }

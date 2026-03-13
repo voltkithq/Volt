@@ -12,6 +12,7 @@ import {
   fsWriteFile,
   fsReadDir,
   fsStat,
+  fsExists,
   fsMkdir,
   fsRemove,
 } from '@voltkit/volt-native';
@@ -133,7 +134,7 @@ describe('fs module', () => {
   });
 
   describe('stat', () => {
-    it('returns file metadata', async () => {
+    it('returns file metadata with timestamps', async () => {
       const info = await fs.stat('test.txt');
       expect(fsStat).toHaveBeenCalledWith('/mock/base', 'test.txt');
       expect(info).toEqual({
@@ -141,7 +142,29 @@ describe('fs module', () => {
         isFile: true,
         isDir: false,
         readonly: false,
+        modifiedMs: 1700000000000,
+        createdMs: 1699000000000,
       });
+    });
+  });
+
+  describe('exists', () => {
+    it('calls native fsExists with baseDir and path', async () => {
+      const result = await fs.exists('test.txt');
+      expect(fsExists).toHaveBeenCalledWith('/mock/base', 'test.txt');
+      expect(result).toBe(true);
+    });
+
+    it('rejects absolute paths', async () => {
+      await expect(fs.exists('/etc/passwd')).rejects.toThrow(
+        'Absolute paths are not allowed',
+      );
+    });
+
+    it('rejects path traversal', async () => {
+      await expect(fs.exists('../../secret')).rejects.toThrow(
+        'Path traversal is not allowed',
+      );
     });
   });
 

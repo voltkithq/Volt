@@ -588,6 +588,7 @@ module.exports.clipboardWriteText = nativeBinding.clipboardWriteText
 module.exports.dialogShowMessage = nativeBinding.dialogShowMessage
 module.exports.dialogShowOpen = nativeBinding.dialogShowOpen
 module.exports.dialogShowSave = nativeBinding.dialogShowSave
+module.exports.fsExists = nativeBinding.fsExists
 module.exports.fsMkdir = nativeBinding.fsMkdir
 module.exports.fsReadDir = nativeBinding.fsReadDir
 module.exports.fsReadFile = nativeBinding.fsReadFile
