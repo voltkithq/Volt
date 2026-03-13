@@ -261,6 +261,11 @@ mod tests {
 
         let id = start_watch(dir.clone(), true, 100).unwrap();
 
+        // Drain any initial events the watcher may emit on startup
+        std::thread::sleep(Duration::from_millis(200));
+        let _ = drain_events(&id).unwrap();
+
+        // Now a second drain should be empty (no new filesystem changes)
         let events = drain_events(&id).unwrap();
         assert!(events.is_empty());
 
