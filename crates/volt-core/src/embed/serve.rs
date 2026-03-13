@@ -64,6 +64,9 @@ pub fn serve_asset(bundle: &AssetBundle, request_path: &str) -> Response<Cow<'st
                 .header("Content-Security-Policy", csp)
                 .header("Cross-Origin-Opener-Policy", "same-origin")
                 .header("X-Content-Type-Options", "nosniff")
+                // Required for WebView2: Vite emits <script crossorigin> which forces
+                // CORS mode even for same-origin requests on custom protocols.
+                .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "volt://localhost")
                 .body(Cow::Owned(data.to_vec()))
                 .unwrap_or_else(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Error"))
         }

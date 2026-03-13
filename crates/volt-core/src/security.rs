@@ -1,6 +1,6 @@
 //! Content Security Policy generation for WebView responses.
 
-const VOLT_EMBEDDED_ORIGINS: &str = "volt://localhost https://volt.localhost";
+const VOLT_EMBEDDED_ORIGINS: &str = "volt://localhost http://volt.localhost https://volt.localhost";
 
 /// Default CSP for production builds - strict, no unsafe-eval.
 pub fn production_csp() -> String {

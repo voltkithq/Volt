@@ -2,8 +2,6 @@ use url::Url;
 
 use super::{WebViewConfig, WebViewSource};
 
-const VOLT_PROTOCOL_ALIAS_ORIGIN: &str = "https://volt.localhost";
-
 pub(super) fn navigation_origins_for(config: &WebViewConfig) -> Vec<String> {
     let mut origins = config.allowed_origins.clone();
 
@@ -12,7 +10,13 @@ pub(super) fn navigation_origins_for(config: &WebViewConfig) -> Vec<String> {
     {
         match parsed.scheme() {
             "http" | "https" => origins.push(parsed.origin().ascii_serialization()),
-            "volt" => origins.push(VOLT_PROTOCOL_ALIAS_ORIGIN.to_string()),
+            "volt" => {
+                // On Windows, wry maps custom protocols to http(s)://<scheme>.localhost/
+                // depending on the `use_https` setting (defaults to http). Allow both
+                // schemes so navigation succeeds regardless of that configuration.
+                origins.push("http://volt.localhost".to_string());
+                origins.push("https://volt.localhost".to_string());
+            }
             _ => {}
         }
     }

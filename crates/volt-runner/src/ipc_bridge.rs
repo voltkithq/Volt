@@ -14,7 +14,9 @@ use volt_core::ipc::{
 use crate::js_runtime_pool::JsRuntimePoolClient;
 use crate::modules::volt_bench;
 
-const DEFAULT_IPC_HANDLER_TIMEOUT: Duration = Duration::from_secs(5);
+// Generous default: handlers may open native dialogs (file picker, message box)
+// that block the Boa thread while the user interacts. 5s was far too short.
+const DEFAULT_IPC_HANDLER_TIMEOUT: Duration = Duration::from_secs(120);
 const DEFAULT_MAX_IN_FLIGHT_PER_WINDOW: usize = 32;
 const DEFAULT_MAX_IN_FLIGHT_TOTAL: usize = 128;
 const DEFAULT_IPC_DISPATCH_WORKER_COUNT: usize = 4;

@@ -12,8 +12,26 @@ import { cleanupAssetBundleIfExists, cleanupDirectoryIfExists, prepareOutputDire
 import { artifactFileNameForTarget, inferBuildPlatform } from './platform.js';
 import { readCargoMetadata, resolveRuntimeArtifact } from './runtime-artifact.js';
 
+import { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 export interface BuildOptions {
   target?: string;
+}
+
+/**
+ * Locate the runner crate source bundled inside the volt-cli package.
+ * Returns the path to the workspace root, or null if not found.
+ */
+function resolveBundledRunnerCrates(): string | null {
+  const cliDistDir = dirname(fileURLToPath(import.meta.url));
+  // runner-crates/ is a sibling of dist/ in the published package
+  // From dist/commands/build/ we need to go up 3 levels to reach the package root
+  const bundledPath = resolve(cliDistDir, '..', '..', '..', 'runner-crates');
+  if (existsSync(resolve(bundledPath, 'Cargo.toml'))) {
+    return bundledPath;
+  }
+  return null;
 }
 
 /**
@@ -164,7 +182,23 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
   }
 
   const cargoMetadata = readCargoMetadata(cwd);
-  const workspaceRoot = cargoMetadata?.workspace_root ?? cwd;
+  let workspaceRoot: string;
+  if (cargoMetadata?.workspace_root) {
+    workspaceRoot = cargoMetadata.workspace_root;
+  } else {
+    // No Cargo workspace found — use the runner crates bundled with volt-cli
+    const bundledRunner = resolveBundledRunnerCrates();
+    if (!bundledRunner) {
+      failBuild(
+        '[volt] No Cargo workspace found and no bundled runner crates available.\n' +
+        '  Make sure Rust is installed and either:\n' +
+        '  - Run `volt build` inside a Cargo workspace containing volt-runner, or\n' +
+        '  - Use a published @voltkit/volt-cli that includes bundled runner crates.',
+      );
+    }
+    workspaceRoot = bundledRunner!;
+    console.log('[volt] Using bundled runner crates (no local Cargo workspace found).');
+  }
   console.log(`[volt] Workspace root: ${workspaceRoot}`);
 
   if (!assetBundlePath || !backendBundlePath || !runnerConfigPath) {

@@ -12,10 +12,11 @@
   },
   "main": "dist/index.js",
   "files": [
-    "dist"
+    "dist",
+    "runner-crates"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node scripts/sync-runner-crates.mjs",
     "lint": "eslint \"src/**/*.{ts,mts,cts}\" --max-warnings 0",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
