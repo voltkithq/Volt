@@ -1,6 +1,6 @@
 {
   "name": "@voltkit/create-volt",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "license": "BSL-1.1",
   "repository": {
     "type": "git",
@@ -12,7 +12,10 @@
   },
   "type": "module",
   "main": "dist/index.js",
-  "files": ["dist", "templates"],
+  "files": [
+    "dist",
+    "templates"
+  ],
   "scripts": {
     "build": "tsc && node -e \"require('node:fs').cpSync('src/templates','dist/templates',{recursive:true})\"",
     "lint": "eslint \"src/**/*.{ts,mts,cts,js,mjs,cjs}\" --max-warnings 0",
