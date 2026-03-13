@@ -19,6 +19,7 @@ const ENV_RUNNER_CONFIG_PATH: &str = "VOLT_RUNNER_CONFIG_PATH";
 const ENV_RUNNER_CONFIG_LEGACY: &str = "VOLT_RUNNER_CONFIG";
 const ENV_APP_NAME: &str = "VOLT_APP_NAME";
 const SIDECAR_RUNNER_CONFIG: &str = "volt-config.json";
+const SENTINEL_RUNNER_CONFIG: &[u8; 32] = b"__VOLT_SENTINEL_RUNNER_CONFG_V1_";
 
 #[derive(Debug, Clone)]
 pub(crate) struct RunnerConfig {
@@ -45,13 +46,29 @@ pub(crate) fn load_runner_config() -> Result<RunnerConfig, RunnerError> {
     } else if let Some(bytes) = read_sidecar_config() {
         bytes
     } else {
-        EMBEDDED_CONFIG_BYTES.to_vec()
+        unwrap_sentinel_config(EMBEDDED_CONFIG_BYTES).to_vec()
     };
 
     let mut config = parsing::parse_runner_config_bytes(&config_bytes)?;
     apply_app_name_override(&mut config, env::var(ENV_APP_NAME))?;
 
     Ok(config)
+}
+
+/// If the embedded config starts with a sentinel marker, extract the actual payload.
+fn unwrap_sentinel_config(bytes: &[u8]) -> &[u8] {
+    if bytes.len() >= 36 && bytes[..32] == SENTINEL_RUNNER_CONFIG[..] {
+        let actual_len = u32::from_le_bytes(
+            bytes[32..36].try_into().unwrap_or([0; 4]),
+        ) as usize;
+        if actual_len == 0 {
+            return &[];
+        }
+        let end = (36 + actual_len).min(bytes.len());
+        &bytes[36..end]
+    } else {
+        bytes
+    }
 }
 
 /// Try to read the runner config from a sidecar file alongside the current executable.

@@ -15,6 +15,10 @@ const EMBEDDED_ASSET_BUNDLE_BYTES: &[u8] =
 const EMBEDDED_BACKEND_BUNDLE_BYTES: &[u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/embedded-backend.js"));
 
+/// Sentinel markers — must match the values in build.rs.
+const SENTINEL_ASSET_BUNDLE: &[u8; 32] = b"__VOLT_SENTINEL_ASSET_BUNDLE_V1_";
+const SENTINEL_BACKEND_BUNDLE: &[u8; 32] = b"__VOLT_SENTINEL_BACKEND_BNDL_V1_";
+
 /// Sidecar file names — when a pre-built runner binary is used, the CLI
 /// places these files alongside the exe instead of embedding them.
 const SIDECAR_ASSET_BUNDLE: &str = "volt-assets.bin";
@@ -32,8 +36,9 @@ pub(crate) fn load_asset_bundle() -> Result<AssetBundle, RunnerError> {
     if let Some(bytes) = read_sidecar_file(SIDECAR_ASSET_BUNDLE) {
         return load_asset_bundle_from_bytes(&bytes);
     }
-    // 3. Embedded bytes (compiled-in)
-    load_asset_bundle_from_bytes(EMBEDDED_ASSET_BUNDLE_BYTES)
+    // 3. Embedded bytes (compiled-in or patched shell)
+    let bytes = unwrap_sentinel_data(EMBEDDED_ASSET_BUNDLE_BYTES, SENTINEL_ASSET_BUNDLE);
+    load_asset_bundle_from_bytes(bytes)
 }
 
 pub(crate) fn load_backend_bundle_source() -> Result<String, RunnerError> {
@@ -51,9 +56,10 @@ pub(crate) fn load_backend_bundle_source() -> Result<String, RunnerError> {
     if let Some(bytes) = read_sidecar_file(SIDECAR_BACKEND_BUNDLE) {
         return decode_backend_bundle_bytes(&bytes, "sidecar backend bundle".to_string());
     }
-    // 3. Embedded bytes (compiled-in)
+    // 3. Embedded bytes (compiled-in or patched shell)
+    let bytes = unwrap_sentinel_data(EMBEDDED_BACKEND_BUNDLE_BYTES, SENTINEL_BACKEND_BUNDLE);
     decode_backend_bundle_bytes(
-        EMBEDDED_BACKEND_BUNDLE_BYTES,
+        bytes,
         "embedded backend bundle".to_string(),
     )
 }
@@ -71,6 +77,25 @@ fn exe_directory() -> Option<PathBuf> {
         .ok()
         .and_then(|p| fs::canonicalize(p).ok())
         .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+}
+
+/// If the embedded data starts with a sentinel marker, extract the actual payload.
+/// Layout: [32-byte sentinel][4-byte LE actual_length][data...][zero padding]
+/// If no sentinel is detected, return the bytes as-is (normal compiled-in build).
+fn unwrap_sentinel_data<'a>(bytes: &'a [u8], sentinel: &[u8; 32]) -> &'a [u8] {
+    if bytes.len() >= 36 && bytes[..32] == sentinel[..] {
+        let actual_len = u32::from_le_bytes(
+            bytes[32..36].try_into().unwrap_or([0; 4]),
+        ) as usize;
+        if actual_len == 0 {
+            // Unpatched shell — no data was injected
+            return &[];
+        }
+        let end = (36 + actual_len).min(bytes.len());
+        &bytes[36..end]
+    } else {
+        bytes
+    }
 }
 
 pub(super) fn load_asset_bundle_from_bytes(bytes: &[u8]) -> Result<AssetBundle, RunnerError> {

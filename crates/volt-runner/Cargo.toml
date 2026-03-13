@@ -7,6 +7,7 @@ license.workspace = true
 [features]
 default = []
 devtools = ["volt-core/devtools"]
+prebuilt-shell = []
 
 [dependencies]
 volt-core = { path = "../volt-core" }

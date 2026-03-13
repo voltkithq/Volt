@@ -1,5 +1,5 @@
 import { build as viteBuild } from 'vite';
-import { copyFileSync, existsSync } from 'node:fs';
+import { copyFileSync, existsSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { extname, resolve } from 'node:path';
 import { loadConfig } from '../../utils/config.js';
@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { runBuildPreflight, enforcePreflightResult } from '../../utils/preflight.js';
 import { convertPngToIco } from '../../utils/icon-converter.js';
 import { resolvePrebuiltRunner } from '../../utils/prebuilt-runner.js';
+import { patchRunnerBinary } from '../../utils/binary-patcher.js';
 
 export interface BuildOptions {
   target?: string;
@@ -189,17 +190,27 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
   });
 
   if (prebuiltRunner && !config.devtools) {
-    // Use pre-built runner with sidecar files — no Rust compilation needed.
-    console.log('[volt] Using pre-built runner binary (no Cargo compilation required).');
+    // Patch the pre-built shell binary with real app data — no Rust compilation needed.
+    console.log('[volt] Using pre-built runner shell (no Cargo compilation required).');
     const ext = buildPlatform === 'win32' ? '.exe' : '';
     const outputFileName = `${binaryName}${ext}`;
     const destBinary = resolve(outputDir, outputFileName);
-    copyFileSync(prebuiltRunner, destBinary);
 
-    // Place sidecar files alongside the binary
-    copyFileSync(assetBundlePath!, resolve(outputDir, 'volt-assets.bin'));
-    copyFileSync(backendBundlePath!, resolve(outputDir, 'volt-backend.js'));
-    copyFileSync(runnerConfigPath!, resolve(outputDir, 'volt-config.json'));
+    try {
+      patchRunnerBinary(prebuiltRunner, destBinary, {
+        assetBundle: readFileSync(assetBundlePath!),
+        backendBundle: readFileSync(backendBundlePath!),
+        runnerConfig: readFileSync(runnerConfigPath!),
+      });
+      console.log('[volt] Shell binary patched with app data.');
+    } catch (err) {
+      // If patching fails (e.g. no sentinels found = Phase 1 binary), fall back to sidecar
+      console.warn(`[volt] Binary patching failed, using sidecar files: ${err}`);
+      copyFileSync(prebuiltRunner, destBinary);
+      copyFileSync(assetBundlePath!, resolve(outputDir, 'volt-assets.bin'));
+      copyFileSync(backendBundlePath!, resolve(outputDir, 'volt-backend.js'));
+      copyFileSync(runnerConfigPath!, resolve(outputDir, 'volt-config.json'));
+    }
 
     writeRuntimeArtifactManifest(outputDir, {
       schemaVersion: 1,
