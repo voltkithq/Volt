@@ -18,6 +18,9 @@ import {
   fsResolveGrant,
   fsRename,
   fsCopy,
+  fsWatchStart,
+  fsWatchPoll,
+  fsWatchClose,
 } from '@voltkit/volt-native';
 
 describe('fs module', () => {
@@ -314,6 +317,67 @@ describe('fs module', () => {
       const scopedFs = await fs.bindScope('test_grant_copy_abs');
       await expect(scopedFs.copy('/etc/passwd', 'stolen.md')).rejects.toThrow('Absolute paths');
       await expect(scopedFs.copy('file.md', '/tmp/evil')).rejects.toThrow('Absolute paths');
+    });
+  });
+
+  describe('watch', () => {
+    it('creates a watcher and returns a FileWatcher handle', async () => {
+      const watcher = await fs.watch('data');
+      expect(fsWatchStart).toHaveBeenCalledWith('/mock/base', 'data', true, 200);
+      expect(watcher).toBeDefined();
+      expect(typeof watcher.poll).toBe('function');
+      expect(typeof watcher.close).toBe('function');
+    });
+
+    it('passes custom watch options', async () => {
+      await fs.watch('logs', { recursive: false, debounceMs: 500 });
+      expect(fsWatchStart).toHaveBeenCalledWith('/mock/base', 'logs', false, 500);
+    });
+
+    it('poll calls native fsWatchPoll with watcher ID', async () => {
+      const watcher = await fs.watch('data');
+      const events = await watcher.poll();
+      expect(fsWatchPoll).toHaveBeenCalled();
+      expect(events).toEqual([]);
+    });
+
+    it('close calls native fsWatchClose with watcher ID', async () => {
+      const watcher = await fs.watch('data');
+      await watcher.close();
+      expect(fsWatchClose).toHaveBeenCalled();
+    });
+
+    it('rejects watching absolute paths', async () => {
+      await expect(fs.watch('/etc')).rejects.toThrow('Absolute paths');
+    });
+
+    it('rejects watching with path traversal', async () => {
+      await expect(fs.watch('../../secret')).rejects.toThrow('Path traversal');
+    });
+  });
+
+  describe('scoped watch', () => {
+    it('creates a scoped watcher via ScopedFs.watch', async () => {
+      const scopedFs = await fs.bindScope('test_grant_watch');
+      const watcher = await scopedFs.watch('subdir');
+      expect(fsWatchStart).toHaveBeenCalledWith('/mock/grant/path', 'subdir', true, 200);
+      expect(watcher).toBeDefined();
+    });
+
+    it('scoped watch allows empty subpath for scope root', async () => {
+      const scopedFs = await fs.bindScope('test_grant_watch_root');
+      await scopedFs.watch('');
+      expect(fsWatchStart).toHaveBeenCalledWith('/mock/grant/path', '', true, 200);
+    });
+
+    it('scoped watch rejects path traversal', async () => {
+      const scopedFs = await fs.bindScope('test_grant_watch_trav');
+      await expect(scopedFs.watch('../../secret')).rejects.toThrow('Path traversal');
+    });
+
+    it('scoped watch rejects absolute paths', async () => {
+      const scopedFs = await fs.bindScope('test_grant_watch_abs');
+      await expect(scopedFs.watch('/etc')).rejects.toThrow('Absolute paths');
     });
   });
 });

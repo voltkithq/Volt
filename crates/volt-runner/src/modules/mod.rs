@@ -31,6 +31,7 @@ pub mod volt_secure_storage;
 pub mod volt_shell;
 pub mod volt_tray;
 pub mod volt_updater;
+pub mod volt_watcher;
 pub mod volt_window;
 
 pub(crate) use event_helpers::{bind_native_event_off, bind_native_event_on};

@@ -196,6 +196,19 @@ declare module 'volt:fs' {
   export function scopedRemove(grantId: string, path: string): Promise<void>;
   export function scopedRename(grantId: string, from: string, to: string): Promise<void>;
   export function scopedCopy(grantId: string, from: string, to: string): Promise<void>;
+
+  /** Watch operations. */
+  export function watchStart(path: string, recursive: boolean, debounceMs: number): Promise<string>;
+  export function watchPoll(watcherId: string): Promise<unknown[]>;
+  export function watchClose(watcherId: string): Promise<void>;
+  export function scopedWatchStart(
+    grantId: string,
+    subpath: string,
+    recursive: boolean,
+    debounceMs: number,
+  ): Promise<string>;
+  export function scopedWatchPoll(watcherId: string): Promise<unknown[]>;
+  export function scopedWatchClose(watcherId: string): Promise<void>;
 }
 
 declare module 'volt:http' {

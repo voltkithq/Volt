@@ -107,6 +107,20 @@ declare module '@voltkit/volt-native' {
   /** Copy a file within the scope. */
   export function fsCopy(baseDir: string, from: string, to: string): void;
 
+  /** Start watching a directory for changes. Returns a watcher ID. */
+  export function fsWatchStart(
+    baseDir: string,
+    subpath: string,
+    recursive: boolean,
+    debounceMs: number,
+  ): string;
+
+  /** Drain all pending events from a watcher. Returns an array of event objects. */
+  export function fsWatchPoll(watcherId: string): unknown[];
+
+  /** Stop a watcher and release resources. */
+  export function fsWatchClose(watcherId: string): void;
+
   /** File metadata returned by fsStat. */
   export interface NativeFileInfo {
     size: number;

@@ -68,7 +68,7 @@ export type {
 } from './dialog.js';
 export type { ClipboardImage } from './clipboard.js';
 export type { NotificationOptions } from './notification.js';
-export type { FileInfo, ScopedFs } from './fs.js';
+export type { FileInfo, ScopedFs, WatchEvent, WatchOptions, FileWatcher } from './fs.js';
 export type { DataProfile, DataProfileOptions, DataQueryOptions, DataQueryResult } from './data.js';
 export type { UpdateInfo } from './updater.js';
 export type { WorkflowPluginInfo, WorkflowRunOptions, WorkflowRunResult } from './workflow.js';

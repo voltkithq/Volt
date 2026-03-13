@@ -14,6 +14,7 @@ pub mod security;
 pub mod shell;
 pub mod tray;
 pub mod updater;
+pub mod watcher;
 pub mod webview;
 pub mod window;
 

@@ -146,6 +146,14 @@ export const fsResolveGrant = vi.fn(
   (_grantId: string) => '/mock/grant/path',
 );
 
+let _mockWatcherCounter = 0;
+export const fsWatchStart = vi.fn(
+  (_baseDir: string, _subpath: string, _recursive: boolean, _debounceMs: number) =>
+    `mock_watcher_${++_mockWatcherCounter}`,
+);
+export const fsWatchPoll = vi.fn((_watcherId: string) => [] as unknown[]);
+export const fsWatchClose = vi.fn((_watcherId: string) => {});
+
 // ── Shell ──────────────────────────────────────────────────────────────
 
 export const shellOpenExternal = vi.fn((_url: string) => {});

@@ -152,6 +152,15 @@ export declare function fsResolveGrant(grantId: string): string
 /** Get file/directory metadata. Path is relative to the base scope directory. */
 export declare function fsStat(baseDir: string, path: string): VoltFileInfo
 
+/** Stop a watcher and release resources. */
+export declare function fsWatchClose(watcherId: string): void
+
+/** Drain all pending events from a watcher. Returns a JSON-serializable array. */
+export declare function fsWatchPoll(watcherId: string): Array<any>
+
+/** Start watching a directory for changes. Returns a watcher ID. */
+export declare function fsWatchStart(baseDir: string, subpath: string, recursive: boolean, debounceMs: number): string
+
 /** Write data to a file. Path is relative to the base scope directory. */
 export declare function fsWriteFile(baseDir: string, path: string, data: Buffer): void
 

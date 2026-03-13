@@ -3,6 +3,8 @@ use volt_core::fs;
 use volt_core::grant_store;
 use volt_core::permissions::Permission;
 
+use volt_core::watcher;
+
 use super::{
     fs_base_dir, native_function_module, promise_from_json_result, promise_from_result,
     require_permission,
@@ -218,6 +220,71 @@ fn scoped_read_file_binary(grant_id: String, path: String, context: &mut Context
     promise_from_json_result(context, result).into()
 }
 
+fn watch_start(path: String, recursive: bool, debounce_ms: f64, context: &mut Context) -> JsValue {
+    let result = (|| {
+        require_permission(Permission::FileSystem).map_err(super::format_js_error)?;
+        let base = fs_base_dir()?;
+        let target = base.join(&path);
+        watcher::start_watch(target, recursive, debounce_ms as u64)
+    })();
+
+    promise_from_result(context, result).into()
+}
+
+fn watch_poll(watcher_id: String, context: &mut Context) -> JsValue {
+    let result = (|| {
+        require_permission(Permission::FileSystem).map_err(super::format_js_error)?;
+        let events = watcher::drain_events(&watcher_id)?;
+        let json_events: Vec<serde_json::Value> = events
+            .into_iter()
+            .map(|e| serde_json::to_value(e).unwrap_or(serde_json::Value::Null))
+            .collect();
+        Ok(serde_json::Value::Array(json_events))
+    })();
+
+    promise_from_json_result(context, result).into()
+}
+
+fn watch_close(watcher_id: String, context: &mut Context) -> JsValue {
+    let result = (|| {
+        require_permission(Permission::FileSystem).map_err(super::format_js_error)?;
+        watcher::stop_watch(&watcher_id)
+    })();
+
+    promise_from_result(context, result).into()
+}
+
+fn scoped_watch_start(
+    grant_id: String,
+    subpath: String,
+    recursive: bool,
+    debounce_ms: f64,
+    context: &mut Context,
+) -> JsValue {
+    let result = (|| {
+        require_permission(Permission::FileSystem).map_err(super::format_js_error)?;
+        let base = grant_store::resolve_grant(&grant_id)
+            .map_err(|error| format!("{error}"))?;
+        let target = if subpath.is_empty() {
+            base
+        } else {
+            fs::safe_resolve(&base, &subpath)
+                .map_err(|error| format!("watch path invalid: {error}"))?
+        };
+        watcher::start_watch(target, recursive, debounce_ms as u64)
+    })();
+
+    promise_from_result(context, result).into()
+}
+
+fn scoped_watch_poll(watcher_id: String, context: &mut Context) -> JsValue {
+    watch_poll(watcher_id, context)
+}
+
+fn scoped_watch_close(watcher_id: String, context: &mut Context) -> JsValue {
+    watch_close(watcher_id, context)
+}
+
 pub fn build_module(context: &mut Context) -> Module {
     let read_file = read_file.into_js_function_copied(context);
     let write_file = write_file.into_js_function_copied(context);
@@ -237,6 +304,12 @@ pub fn build_module(context: &mut Context) -> Module {
     let scoped_remove = scoped_remove.into_js_function_copied(context);
     let scoped_rename = scoped_rename.into_js_function_copied(context);
     let scoped_copy = scoped_copy.into_js_function_copied(context);
+    let watch_start = watch_start.into_js_function_copied(context);
+    let watch_poll = watch_poll.into_js_function_copied(context);
+    let watch_close = watch_close.into_js_function_copied(context);
+    let scoped_watch_start = scoped_watch_start.into_js_function_copied(context);
+    let scoped_watch_poll = scoped_watch_poll.into_js_function_copied(context);
+    let scoped_watch_close = scoped_watch_close.into_js_function_copied(context);
 
     native_function_module(
         context,
@@ -259,6 +332,12 @@ pub fn build_module(context: &mut Context) -> Module {
             ("scopedRemove", scoped_remove),
             ("scopedRename", scoped_rename),
             ("scopedCopy", scoped_copy),
+            ("watchStart", watch_start),
+            ("watchPoll", watch_poll),
+            ("watchClose", watch_close),
+            ("scopedWatchStart", scoped_watch_start),
+            ("scopedWatchPoll", scoped_watch_poll),
+            ("scopedWatchClose", scoped_watch_close),
         ],
     )
 }

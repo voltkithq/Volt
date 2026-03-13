@@ -1,9 +1,10 @@
 use napi::bindgen_prelude::Buffer;
 use napi_derive::napi;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use volt_core::fs;
 use volt_core::grant_store;
 use volt_core::permissions::Permission;
+use volt_core::watcher;
 
 use crate::permissions::require_permission;
 
@@ -128,4 +129,42 @@ pub fn fs_copy(base_dir: String, from: String, to: String) -> napi::Result<()> {
     require_permission(Permission::FileSystem)?;
     fs::copy(Path::new(&base_dir), &from, &to)
         .map_err(|e| napi::Error::from_reason(format!("fs copy failed: {e}")))
+}
+
+/// Start watching a directory for changes. Returns a watcher ID.
+#[napi]
+pub fn fs_watch_start(
+    base_dir: String,
+    subpath: String,
+    recursive: bool,
+    debounce_ms: f64,
+) -> napi::Result<String> {
+    require_permission(Permission::FileSystem)?;
+    let target = if subpath.is_empty() {
+        PathBuf::from(&base_dir)
+    } else {
+        PathBuf::from(&base_dir).join(&subpath)
+    };
+    watcher::start_watch(target, recursive, debounce_ms as u64)
+        .map_err(|e| napi::Error::from_reason(format!("fs watch failed: {e}")))
+}
+
+/// Drain all pending events from a watcher. Returns a JSON-serializable array.
+#[napi]
+pub fn fs_watch_poll(watcher_id: String) -> napi::Result<Vec<serde_json::Value>> {
+    require_permission(Permission::FileSystem)?;
+    let events = watcher::drain_events(&watcher_id)
+        .map_err(|e| napi::Error::from_reason(format!("fs watch poll failed: {e}")))?;
+    events
+        .into_iter()
+        .map(|e| serde_json::to_value(e).map_err(|e| napi::Error::from_reason(format!("{e}"))))
+        .collect()
+}
+
+/// Stop a watcher and release resources.
+#[napi]
+pub fn fs_watch_close(watcher_id: String) -> napi::Result<()> {
+    require_permission(Permission::FileSystem)?;
+    watcher::stop_watch(&watcher_id)
+        .map_err(|e| napi::Error::from_reason(format!("fs watch close failed: {e}")))
 }

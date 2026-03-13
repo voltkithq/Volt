@@ -19,6 +19,9 @@ import {
   fsResolveGrant,
   fsRename,
   fsCopy,
+  fsWatchStart,
+  fsWatchPoll,
+  fsWatchClose,
 } from '@voltkit/volt-native';
 
 /** File metadata returned by stat(). */
@@ -35,6 +38,34 @@ export interface FileInfo {
   modifiedMs: number;
   /** Creation time as milliseconds since Unix epoch, or null if unavailable. */
   createdMs: number | null;
+}
+
+/** A file system watch event. */
+export interface WatchEvent {
+  /** Event kind. */
+  kind: 'create' | 'change' | 'delete' | 'rename' | 'overflow';
+  /** Scope-relative path of the affected file/directory. */
+  path: string;
+  /** For rename events, the old scope-relative path (if available). */
+  oldPath?: string;
+  /** Whether the event target is a directory. */
+  isDir?: boolean;
+}
+
+/** Options for starting a file watcher. */
+export interface WatchOptions {
+  /** Watch subdirectories recursively. Defaults to true. */
+  recursive?: boolean;
+  /** Debounce interval in milliseconds. Defaults to 200. */
+  debounceMs?: number;
+}
+
+/** A file watcher handle. Call poll() to retrieve events, close() to stop watching. */
+export interface FileWatcher {
+  /** Drain all pending events since the last poll. */
+  poll(): Promise<WatchEvent[]>;
+  /** Stop watching and release resources. */
+  close(): Promise<void>;
 }
 
 /**
@@ -170,6 +201,7 @@ export interface ScopedFs {
   remove(path: string): Promise<void>;
   rename(from: string, to: string): Promise<void>;
   copy(from: string, to: string): Promise<void>;
+  watch(subpath: string, options?: WatchOptions): Promise<FileWatcher>;
 }
 
 /**
@@ -247,6 +279,20 @@ async function bindScope(grantId: string): Promise<ScopedFs> {
       validatePath(to);
       fsCopy(grantBasePath, from, to);
     },
+    async watch(subpath: string, options?: WatchOptions): Promise<FileWatcher> {
+      validateScopedPath(subpath);
+      const recursive = options?.recursive ?? true;
+      const debounceMs = options?.debounceMs ?? 200;
+      const watcherId = fsWatchStart(grantBasePath, subpath, recursive, debounceMs);
+      return {
+        async poll(): Promise<WatchEvent[]> {
+          return fsWatchPoll(watcherId) as WatchEvent[];
+        },
+        async close(): Promise<void> {
+          fsWatchClose(watcherId);
+        },
+      };
+    },
   };
 }
 
@@ -269,6 +315,32 @@ function validateScopedPath(path: string): void {
   validatePath(path);
 }
 
+/**
+ * Watch a directory for file changes within the app scope.
+ *
+ * @example
+ * ```ts
+ * const watcher = await fs.watch('data', { recursive: true });
+ * // Later...
+ * const events = await watcher.poll();
+ * await watcher.close();
+ * ```
+ */
+async function watch(path: string, options?: WatchOptions): Promise<FileWatcher> {
+  validatePath(path);
+  const recursive = options?.recursive ?? true;
+  const debounceMs = options?.debounceMs ?? 200;
+  const watcherId = fsWatchStart(baseDir, path, recursive, debounceMs);
+  return {
+    async poll(): Promise<WatchEvent[]> {
+      return fsWatchPoll(watcherId) as WatchEvent[];
+    },
+    async close(): Promise<void> {
+      fsWatchClose(watcherId);
+    },
+  };
+}
+
 /** Sandboxed file system APIs. Requires `permissions: ['fs']` in volt.config.ts. */
 export const fs = {
   readFile,
@@ -281,4 +353,5 @@ export const fs = {
   mkdir,
   remove,
   bindScope,
+  watch,
 };
