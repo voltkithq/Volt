@@ -157,13 +157,19 @@ declare module 'volt:fs' {
     createdMs: number | null;
   }
 
-  /** A read-only scoped file handle bound to a grant. */
+  /** A scoped file handle bound to a grant. */
   export interface ScopedFs {
     readFile(path: string): Promise<string>;
     readFileBinary(path: string): Promise<Uint8Array>;
     readDir(path: string): Promise<string[]>;
     stat(path: string): Promise<FileInfo>;
     exists(path: string): Promise<boolean>;
+    writeFile(path: string, data: string): Promise<void>;
+    writeFileBinary(path: string, data: Uint8Array): Promise<void>;
+    mkdir(path: string): Promise<void>;
+    remove(path: string): Promise<void>;
+    rename(from: string, to: string): Promise<void>;
+    copy(from: string, to: string): Promise<void>;
   }
 
   export function readFile(path: string): Promise<string>;
@@ -183,6 +189,13 @@ declare module 'volt:fs' {
   export function scopedReadDir(grantId: string, path: string): Promise<string[]>;
   export function scopedStat(grantId: string, path: string): Promise<FileInfo>;
   export function scopedExists(grantId: string, path: string): Promise<boolean>;
+
+  /** Scoped write operations — use the grant ID from bindScope(). */
+  export function scopedWriteFile(grantId: string, path: string, data: string): Promise<void>;
+  export function scopedMkdir(grantId: string, path: string): Promise<void>;
+  export function scopedRemove(grantId: string, path: string): Promise<void>;
+  export function scopedRename(grantId: string, from: string, to: string): Promise<void>;
+  export function scopedCopy(grantId: string, from: string, to: string): Promise<void>;
 }
 
 declare module 'volt:http' {

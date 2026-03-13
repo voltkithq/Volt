@@ -140,6 +140,8 @@ export const fsExists = vi.fn(
 );
 export const fsMkdir = vi.fn((_baseDir: string, _path: string) => {});
 export const fsRemove = vi.fn((_baseDir: string, _path: string) => {});
+export const fsRename = vi.fn((_baseDir: string, _from: string, _to: string) => {});
+export const fsCopy = vi.fn((_baseDir: string, _from: string, _to: string) => {});
 export const fsResolveGrant = vi.fn(
   (_grantId: string) => '/mock/grant/path',
 );

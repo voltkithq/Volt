@@ -16,6 +16,8 @@ import {
   fsMkdir,
   fsRemove,
   fsResolveGrant,
+  fsRename,
+  fsCopy,
 } from '@voltkit/volt-native';
 
 describe('fs module', () => {
@@ -246,6 +248,72 @@ describe('fs module', () => {
     it('scoped readFile rejects absolute paths', async () => {
       const scopedFs = await fs.bindScope('test_grant_abs');
       await expect(scopedFs.readFile('/etc/passwd')).rejects.toThrow('Absolute paths');
+    });
+  });
+
+  describe('scoped write operations', () => {
+    it('scoped writeFile calls native with grant path', async () => {
+      const scopedFs = await fs.bindScope('test_grant_write');
+      await scopedFs.writeFile('notes/new.md', '# Hello');
+      expect(fsWriteFile).toHaveBeenCalledWith(
+        '/mock/grant/path',
+        'notes/new.md',
+        expect.any(Buffer),
+      );
+    });
+
+    it('scoped writeFileBinary calls native with grant path', async () => {
+      const scopedFs = await fs.bindScope('test_grant_write_bin');
+      const data = new Uint8Array([1, 2, 3]);
+      await scopedFs.writeFileBinary('data.bin', data);
+      expect(fsWriteFile).toHaveBeenCalledWith(
+        '/mock/grant/path',
+        'data.bin',
+        expect.any(Buffer),
+      );
+    });
+
+    it('scoped mkdir calls native with grant path', async () => {
+      const scopedFs = await fs.bindScope('test_grant_mkdir');
+      await scopedFs.mkdir('new-dir/sub');
+      expect(fsMkdir).toHaveBeenCalledWith('/mock/grant/path', 'new-dir/sub');
+    });
+
+    it('scoped remove calls native with grant path', async () => {
+      const scopedFs = await fs.bindScope('test_grant_remove');
+      await scopedFs.remove('old-file.txt');
+      expect(fsRemove).toHaveBeenCalledWith('/mock/grant/path', 'old-file.txt');
+    });
+
+    it('scoped rename calls native with grant path', async () => {
+      const scopedFs = await fs.bindScope('test_grant_rename');
+      await scopedFs.rename('old.md', 'new.md');
+      expect(fsRename).toHaveBeenCalledWith('/mock/grant/path', 'old.md', 'new.md');
+    });
+
+    it('scoped copy calls native with grant path', async () => {
+      const scopedFs = await fs.bindScope('test_grant_copy');
+      await scopedFs.copy('original.md', 'duplicate.md');
+      expect(fsCopy).toHaveBeenCalledWith('/mock/grant/path', 'original.md', 'duplicate.md');
+    });
+
+    it('scoped write rejects path traversal', async () => {
+      const scopedFs = await fs.bindScope('test_grant_write_trav');
+      await expect(scopedFs.writeFile('../../etc/evil', 'bad')).rejects.toThrow('Path traversal');
+    });
+
+    it('scoped rename rejects path traversal', async () => {
+      const scopedFs = await fs.bindScope('test_grant_rename_trav');
+      await expect(scopedFs.rename('file.md', '../../etc/evil')).rejects.toThrow('Path traversal');
+      await expect(scopedFs.rename('../../etc/passwd', 'stolen.md')).rejects.toThrow(
+        'Path traversal',
+      );
+    });
+
+    it('scoped copy rejects absolute paths', async () => {
+      const scopedFs = await fs.bindScope('test_grant_copy_abs');
+      await expect(scopedFs.copy('/etc/passwd', 'stolen.md')).rejects.toThrow('Absolute paths');
+      await expect(scopedFs.copy('file.md', '/tmp/evil')).rejects.toThrow('Absolute paths');
     });
   });
 });

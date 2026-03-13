@@ -69,3 +69,33 @@ export async function scopedExists(grantId: string, path: string): Promise<boole
   return handle.exists(path);
 }
 
+export async function scopedWriteFile(grantId: string, path: string, data: string): Promise<void> {
+  const handle = devScopedHandles.get(grantId);
+  if (!handle) throw new Error('FS_SCOPE_INVALID: grant ID not found or expired');
+  await handle.writeFile(path, data);
+}
+
+export async function scopedMkdir(grantId: string, path: string): Promise<void> {
+  const handle = devScopedHandles.get(grantId);
+  if (!handle) throw new Error('FS_SCOPE_INVALID: grant ID not found or expired');
+  await handle.mkdir(path);
+}
+
+export async function scopedRemove(grantId: string, path: string): Promise<void> {
+  const handle = devScopedHandles.get(grantId);
+  if (!handle) throw new Error('FS_SCOPE_INVALID: grant ID not found or expired');
+  await handle.remove(path);
+}
+
+export async function scopedRename(grantId: string, from: string, to: string): Promise<void> {
+  const handle = devScopedHandles.get(grantId);
+  if (!handle) throw new Error('FS_SCOPE_INVALID: grant ID not found or expired');
+  await handle.rename(from, to);
+}
+
+export async function scopedCopy(grantId: string, from: string, to: string): Promise<void> {
+  const handle = devScopedHandles.get(grantId);
+  if (!handle) throw new Error('FS_SCOPE_INVALID: grant ID not found or expired');
+  await handle.copy(from, to);
+}
+

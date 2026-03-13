@@ -101,6 +101,12 @@ declare module '@voltkit/volt-native' {
   /** Remove a file or directory. */
   export function fsRemove(baseDir: string, path: string): void;
 
+  /** Rename (move) a file or directory within the scope. */
+  export function fsRename(baseDir: string, from: string, to: string): void;
+
+  /** Copy a file within the scope. */
+  export function fsCopy(baseDir: string, from: string, to: string): void;
+
   /** File metadata returned by fsStat. */
   export interface NativeFileInfo {
     size: number;

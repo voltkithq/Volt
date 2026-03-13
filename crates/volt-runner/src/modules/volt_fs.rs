@@ -150,6 +150,62 @@ fn scoped_exists(grant_id: String, path: String, context: &mut Context) -> JsVal
     promise_from_result(context, result).into()
 }
 
+fn scoped_write_file(grant_id: String, path: String, data: String, context: &mut Context) -> JsValue {
+    let result = (|| {
+        require_permission(Permission::FileSystem).map_err(super::format_js_error)?;
+        let base = grant_store::resolve_grant(&grant_id)
+            .map_err(|error| format!("{error}"))?;
+        fs::write_file(&base, &path, data.as_bytes())
+            .map_err(|error| format!("fs write failed: {error}"))
+    })();
+
+    promise_from_result(context, result).into()
+}
+
+fn scoped_mkdir(grant_id: String, path: String, context: &mut Context) -> JsValue {
+    let result = (|| {
+        require_permission(Permission::FileSystem).map_err(super::format_js_error)?;
+        let base = grant_store::resolve_grant(&grant_id)
+            .map_err(|error| format!("{error}"))?;
+        fs::mkdir(&base, &path).map_err(|error| format!("fs mkdir failed: {error}"))
+    })();
+
+    promise_from_result(context, result).into()
+}
+
+fn scoped_remove(grant_id: String, path: String, context: &mut Context) -> JsValue {
+    let result = (|| {
+        require_permission(Permission::FileSystem).map_err(super::format_js_error)?;
+        let base = grant_store::resolve_grant(&grant_id)
+            .map_err(|error| format!("{error}"))?;
+        fs::remove(&base, &path).map_err(|error| format!("fs remove failed: {error}"))
+    })();
+
+    promise_from_result(context, result).into()
+}
+
+fn scoped_rename(grant_id: String, from: String, to: String, context: &mut Context) -> JsValue {
+    let result = (|| {
+        require_permission(Permission::FileSystem).map_err(super::format_js_error)?;
+        let base = grant_store::resolve_grant(&grant_id)
+            .map_err(|error| format!("{error}"))?;
+        fs::rename(&base, &from, &to).map_err(|error| format!("fs rename failed: {error}"))
+    })();
+
+    promise_from_result(context, result).into()
+}
+
+fn scoped_copy(grant_id: String, from: String, to: String, context: &mut Context) -> JsValue {
+    let result = (|| {
+        require_permission(Permission::FileSystem).map_err(super::format_js_error)?;
+        let base = grant_store::resolve_grant(&grant_id)
+            .map_err(|error| format!("{error}"))?;
+        fs::copy(&base, &from, &to).map_err(|error| format!("fs copy failed: {error}"))
+    })();
+
+    promise_from_result(context, result).into()
+}
+
 fn scoped_read_file_binary(grant_id: String, path: String, context: &mut Context) -> JsValue {
     let result = (|| {
         require_permission(Permission::FileSystem).map_err(super::format_js_error)?;
@@ -176,6 +232,11 @@ pub fn build_module(context: &mut Context) -> Module {
     let scoped_stat = scoped_stat.into_js_function_copied(context);
     let scoped_exists = scoped_exists.into_js_function_copied(context);
     let scoped_read_file_binary = scoped_read_file_binary.into_js_function_copied(context);
+    let scoped_write_file = scoped_write_file.into_js_function_copied(context);
+    let scoped_mkdir = scoped_mkdir.into_js_function_copied(context);
+    let scoped_remove = scoped_remove.into_js_function_copied(context);
+    let scoped_rename = scoped_rename.into_js_function_copied(context);
+    let scoped_copy = scoped_copy.into_js_function_copied(context);
 
     native_function_module(
         context,
@@ -193,6 +254,11 @@ pub fn build_module(context: &mut Context) -> Module {
             ("scopedStat", scoped_stat),
             ("scopedExists", scoped_exists),
             ("scopedReadFileBinary", scoped_read_file_binary),
+            ("scopedWriteFile", scoped_write_file),
+            ("scopedMkdir", scoped_mkdir),
+            ("scopedRemove", scoped_remove),
+            ("scopedRename", scoped_rename),
+            ("scopedCopy", scoped_copy),
         ],
     )
 }

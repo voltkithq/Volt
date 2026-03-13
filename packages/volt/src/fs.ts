@@ -17,6 +17,8 @@ import {
   fsMkdir,
   fsRemove,
   fsResolveGrant,
+  fsRename,
+  fsCopy,
 } from '@voltkit/volt-native';
 
 /** File metadata returned by stat(). */
@@ -155,17 +157,23 @@ function validatePath(path: string): void {
   }
 }
 
-/** A read-only scoped file handle bound to a grant. */
+/** A scoped file handle bound to a grant. */
 export interface ScopedFs {
   readFile(path: string): Promise<string>;
   readFileBinary(path: string): Promise<Uint8Array>;
   readDir(path: string): Promise<string[]>;
   stat(path: string): Promise<FileInfo>;
   exists(path: string): Promise<boolean>;
+  writeFile(path: string, data: string): Promise<void>;
+  writeFileBinary(path: string, data: Uint8Array): Promise<void>;
+  mkdir(path: string): Promise<void>;
+  remove(path: string): Promise<void>;
+  rename(from: string, to: string): Promise<void>;
+  copy(from: string, to: string): Promise<void>;
 }
 
 /**
- * Bind a filesystem scope grant to create a scoped read-only handle.
+ * Bind a filesystem scope grant to create a scoped handle.
  * The grant must have been created by a `showOpenDialog({ grantFsScope: true })` call.
  *
  * @example
@@ -173,6 +181,7 @@ export interface ScopedFs {
  * import { bindScope } from 'voltkit';
  * const scopedFs = await bindScope(grantId);
  * const entries = await scopedFs.readDir('');
+ * await scopedFs.writeFile('notes/new.md', '# New Note');
  * ```
  */
 async function bindScope(grantId: string): Promise<ScopedFs> {
@@ -180,10 +189,6 @@ async function bindScope(grantId: string): Promise<ScopedFs> {
     throw new Error('FS_SCOPE_INVALID: grant ID must be a non-empty string');
   }
 
-  // Validate the grant exists by looking it up in the native store.
-  // For the N-API layer, the grant was created via dialogShowOpenWithGrant
-  // and its root path is stored in the global grant_store.
-  // We use the grant ID to resolve the base path for all scoped ops.
   const grantBasePath = resolveGrantPath(grantId);
 
   return {
@@ -215,6 +220,32 @@ async function bindScope(grantId: string): Promise<ScopedFs> {
     async exists(path: string): Promise<boolean> {
       validateScopedPath(path);
       return fsExists(grantBasePath, path);
+    },
+    async writeFile(path: string, data: string): Promise<void> {
+      validatePath(path);
+      fsWriteFile(grantBasePath, path, Buffer.from(data, 'utf-8'));
+    },
+    async writeFileBinary(path: string, data: Uint8Array): Promise<void> {
+      validatePath(path);
+      fsWriteFile(grantBasePath, path, Buffer.from(data));
+    },
+    async mkdir(path: string): Promise<void> {
+      validatePath(path);
+      fsMkdir(grantBasePath, path);
+    },
+    async remove(path: string): Promise<void> {
+      validatePath(path);
+      fsRemove(grantBasePath, path);
+    },
+    async rename(from: string, to: string): Promise<void> {
+      validatePath(from);
+      validatePath(to);
+      fsRename(grantBasePath, from, to);
+    },
+    async copy(from: string, to: string): Promise<void> {
+      validatePath(from);
+      validatePath(to);
+      fsCopy(grantBasePath, from, to);
     },
   };
 }

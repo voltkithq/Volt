@@ -119,6 +119,9 @@ export declare function dialogShowOpenWithGrant(options: any): GrantDialogResult
 /** Show a save file dialog. Returns the selected path, or null if cancelled. */
 export declare function dialogShowSave(options: any): string | null
 
+/** Copy a file within the scope. */
+export declare function fsCopy(baseDir: string, from: string, to: string): void
+
 /** Check whether a path exists within the base scope directory. */
 export declare function fsExists(baseDir: string, path: string): boolean
 
@@ -136,6 +139,9 @@ export declare function fsReadFileText(baseDir: string, path: string): string
 
 /** Remove a file or directory. Path is relative to the base scope directory. */
 export declare function fsRemove(baseDir: string, path: string): void
+
+/** Rename (move) a file or directory within the scope. */
+export declare function fsRename(baseDir: string, from: string, to: string): void
 
 /**
  * Resolve a grant ID to its root path string.

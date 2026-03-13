@@ -113,3 +113,19 @@ pub fn fs_remove(base_dir: String, path: String) -> napi::Result<()> {
     fs::remove(Path::new(&base_dir), &path)
         .map_err(|e| napi::Error::from_reason(format!("fs remove failed: {e}")))
 }
+
+/// Rename (move) a file or directory within the scope.
+#[napi]
+pub fn fs_rename(base_dir: String, from: String, to: String) -> napi::Result<()> {
+    require_permission(Permission::FileSystem)?;
+    fs::rename(Path::new(&base_dir), &from, &to)
+        .map_err(|e| napi::Error::from_reason(format!("fs rename failed: {e}")))
+}
+
+/// Copy a file within the scope.
+#[napi]
+pub fn fs_copy(base_dir: String, from: String, to: String) -> napi::Result<()> {
+    require_permission(Permission::FileSystem)?;
+    fs::copy(Path::new(&base_dir), &from, &to)
+        .map_err(|e| napi::Error::from_reason(format!("fs copy failed: {e}")))
+}
