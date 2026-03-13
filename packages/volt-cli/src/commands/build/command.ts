@@ -16,6 +16,7 @@ import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runBuildPreflight, enforcePreflightResult } from '../../utils/preflight.js';
 import { convertPngToIco } from '../../utils/icon-converter.js';
+import { resolvePrebuiltRunner } from '../../utils/prebuilt-runner.js';
 
 export interface BuildOptions {
   target?: string;
@@ -171,137 +172,170 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
     failBuild('[volt] Failed to generate runner config:', err);
   }
 
-  console.log('[volt] Compiling native binary...');
   prepareOutputDirectory(outputDir);
-
   const buildPlatform = inferBuildPlatform(options.target);
-  const cargoPackages = ['volt-runner'];
-  if (buildPlatform === 'win32') {
-    cargoPackages.push('volt-updater-helper');
-  }
-  const cargoArgs = ['build', '--release'];
-  for (const pkg of cargoPackages) {
-    cargoArgs.push('-p', pkg);
-  }
-  if (options.target) {
-    cargoArgs.push('--target', options.target);
-    console.log(`[volt] Cross-compilation target: ${options.target}`);
-  }
-  if (config.devtools) {
-    cargoArgs.push('--features', 'devtools');
-    console.log('[volt] Native devtools feature enabled for this build.');
-  }
-
-  const cargoMetadata = readCargoMetadata(cwd);
-  let workspaceRoot: string;
-  if (cargoMetadata?.workspace_root) {
-    workspaceRoot = cargoMetadata.workspace_root;
-  } else {
-    // No Cargo workspace found — use the runner crates bundled with volt-cli
-    const bundledRunner = resolveBundledRunnerCrates();
-    if (!bundledRunner) {
-      failBuild(
-        '[volt] No Cargo workspace found and no bundled runner crates available.\n' +
-        '  Make sure Rust is installed and either:\n' +
-        '  - Run `volt build` inside a Cargo workspace containing volt-runner, or\n' +
-        '  - Use a published @voltkit/volt-cli that includes bundled runner crates.',
-      );
-    }
-    workspaceRoot = bundledRunner!;
-    console.log('[volt] Using bundled runner crates (no local Cargo workspace found).');
-  }
-  console.log(`[volt] Workspace root: ${workspaceRoot}`);
+  const binaryName = toSafeBinaryName(config.name);
 
   if (!assetBundlePath || !backendBundlePath || !runnerConfigPath) {
     failBuild('[volt] Internal error: missing generated bundle paths.');
   }
 
-  // Resolve and convert app icon for Windows resource embedding
-  let appIconPath: string | undefined;
-  if (buildPlatform === 'win32') {
-    const windowConfig = config.window as Record<string, unknown> | undefined;
-    const iconField = windowConfig?.icon;
-    if (typeof iconField === 'string' && iconField.trim()) {
-      const resolvedIcon = resolve(cwd, iconField);
-      if (existsSync(resolvedIcon) && resolvedIcon.endsWith('.png')) {
-        try {
-          appIconPath = convertPngToIco(resolvedIcon, tempBundleDir!);
-          console.log(`[volt] App icon converted for embedding: ${iconField}`);
-        } catch (err) {
-          console.warn(`[volt] Failed to convert icon to ICO format: ${err}`);
-        }
-      } else if (existsSync(resolvedIcon) && resolvedIcon.endsWith('.ico')) {
-        appIconPath = resolvedIcon;
-      }
-    }
-  }
+  // ── Try pre-built runner (skips Cargo entirely) ─────────────────────
+  const cliVersion = config.version ?? '0.1.0';
+  const prebuiltCacheDir = resolve(cwd, '.volt-tmp', 'prebuilt-runners');
+  const prebuiltRunner = await resolvePrebuiltRunner({
+    version: cliVersion,
+    platform: buildPlatform,
+    arch: process.arch,
+    cacheDir: prebuiltCacheDir,
+  });
 
-  try {
-    execFileSync('cargo', cargoArgs, {
-      cwd: workspaceRoot,
-      stdio: 'inherit',
-      env: {
-        ...process.env,
-        VOLT_ASSET_BUNDLE: assetBundlePath,
-        VOLT_BACKEND_BUNDLE: backendBundlePath,
-        VOLT_RUNNER_CONFIG: runnerConfigPath,
-        VOLT_APP_NAME: config.name,
-        VOLT_APP_VERSION: config.version ?? '0.1.0',
-        VOLT_UPDATE_PUBLIC_KEY: config.updater?.publicKey ?? '',
-        ...(appIconPath ? { VOLT_APP_ICON: appIconPath } : {}),
-      },
-    });
-    console.log('[volt] Native binary compiled successfully.');
-
-    const binaryName = toSafeBinaryName(config.name);
-    const targetRoot = cargoMetadata?.target_directory ?? resolve(workspaceRoot, 'target');
-    const releaseDir = options.target
-      ? resolve(targetRoot, options.target, 'release')
-      : resolve(targetRoot, 'release');
-    const { artifact, attemptedPaths } = resolveRuntimeArtifact(
-      releaseDir,
-      options.target,
-      cargoMetadata,
-    );
-    if (!artifact) {
-      console.error('[volt] Failed to locate compiled runtime artifact.');
-      if (attemptedPaths.length > 0) {
-        console.error(`[volt] Checked paths:\n  - ${attemptedPaths.join('\n  - ')}`);
-      } else {
-        console.error('[volt] No runtime artifact candidates could be derived from Cargo metadata.');
-      }
-    }
-    const runtimeArtifact = artifact ?? failBuild('[volt] Build failed due to missing runtime artifact.');
-
-    const runtimeArtifactExt = extname(runtimeArtifact.sourcePath);
-    const outputFileName = `${binaryName}${runtimeArtifactExt}`;
+  if (prebuiltRunner && !config.devtools) {
+    // Use pre-built runner with sidecar files — no Rust compilation needed.
+    console.log('[volt] Using pre-built runner binary (no Cargo compilation required).');
+    const ext = buildPlatform === 'win32' ? '.exe' : '';
+    const outputFileName = `${binaryName}${ext}`;
     const destBinary = resolve(outputDir, outputFileName);
-    copyFileSync(runtimeArtifact.sourcePath, destBinary);
+    copyFileSync(prebuiltRunner, destBinary);
+
+    // Place sidecar files alongside the binary
+    copyFileSync(assetBundlePath!, resolve(outputDir, 'volt-assets.bin'));
+    copyFileSync(backendBundlePath!, resolve(outputDir, 'volt-backend.js'));
+    copyFileSync(runnerConfigPath!, resolve(outputDir, 'volt-config.json'));
+
     writeRuntimeArtifactManifest(outputDir, {
       schemaVersion: 1,
       artifactFileName: outputFileName,
-      cargoArtifactKind: runtimeArtifact.kind,
-      cargoTargetName: runtimeArtifact.targetName,
+      cargoArtifactKind: 'bin',
+      cargoTargetName: 'volt-runner',
       rustTarget: options.target ?? null,
     });
-    console.log(
-      `[volt] Runtime artifact (${runtimeArtifact.kind}:${runtimeArtifact.targetName}) copied to ${destBinary}`,
-    );
-
+    console.log(`[volt] Runtime artifact copied to ${destBinary}`);
+  } else {
+    // ── Cargo compilation path ──────────────────────────────────────────
+    console.log('[volt] Compiling native binary...');
+    const cargoPackages = ['volt-runner'];
     if (buildPlatform === 'win32') {
-      const helperFileName =
-        artifactFileNameForTarget('volt-updater-helper', 'bin', buildPlatform)
-        ?? failBuild('[volt] Build failed due to missing Windows updater helper artifact.');
-      const helperSourcePath = resolve(releaseDir, helperFileName);
-      if (!existsSync(helperSourcePath)) {
-        failBuild('[volt] Build failed due to missing Windows updater helper artifact.');
-      }
-      const helperDestinationPath = resolve(outputDir, helperFileName);
-      copyFileSync(helperSourcePath, helperDestinationPath);
-      console.log(`[volt] Updater helper copied to ${helperDestinationPath}`);
+      cargoPackages.push('volt-updater-helper');
     }
-  } catch (err) {
-    failBuild('[volt] Cargo build failed:', err);
+    const cargoArgs = ['build', '--release'];
+    for (const pkg of cargoPackages) {
+      cargoArgs.push('-p', pkg);
+    }
+    if (options.target) {
+      cargoArgs.push('--target', options.target);
+      console.log(`[volt] Cross-compilation target: ${options.target}`);
+    }
+    if (config.devtools) {
+      cargoArgs.push('--features', 'devtools');
+      console.log('[volt] Native devtools feature enabled for this build.');
+    }
+
+    const cargoMetadata = readCargoMetadata(cwd);
+    let workspaceRoot: string;
+    if (cargoMetadata?.workspace_root) {
+      workspaceRoot = cargoMetadata.workspace_root;
+    } else {
+      const bundledRunner = resolveBundledRunnerCrates();
+      if (!bundledRunner) {
+        failBuild(
+          '[volt] No Cargo workspace found and no bundled runner crates available.\n' +
+          '  Make sure Rust is installed and either:\n' +
+          '  - Run `volt build` inside a Cargo workspace containing volt-runner, or\n' +
+          '  - Use a published @voltkit/volt-cli that includes bundled runner crates.',
+        );
+      }
+      workspaceRoot = bundledRunner!;
+      console.log('[volt] Using bundled runner crates (no local Cargo workspace found).');
+    }
+    console.log(`[volt] Workspace root: ${workspaceRoot}`);
+
+    // Resolve and convert app icon for Windows resource embedding
+    let appIconPath: string | undefined;
+    if (buildPlatform === 'win32') {
+      const windowConfig = config.window as Record<string, unknown> | undefined;
+      const iconField = windowConfig?.icon;
+      if (typeof iconField === 'string' && iconField.trim()) {
+        const resolvedIcon = resolve(cwd, iconField);
+        if (existsSync(resolvedIcon) && resolvedIcon.endsWith('.png')) {
+          try {
+            appIconPath = convertPngToIco(resolvedIcon, tempBundleDir!);
+            console.log(`[volt] App icon converted for embedding: ${iconField}`);
+          } catch (err) {
+            console.warn(`[volt] Failed to convert icon to ICO format: ${err}`);
+          }
+        } else if (existsSync(resolvedIcon) && resolvedIcon.endsWith('.ico')) {
+          appIconPath = resolvedIcon;
+        }
+      }
+    }
+
+    try {
+      execFileSync('cargo', cargoArgs, {
+        cwd: workspaceRoot,
+        stdio: 'inherit',
+        env: {
+          ...process.env,
+          VOLT_ASSET_BUNDLE: assetBundlePath,
+          VOLT_BACKEND_BUNDLE: backendBundlePath,
+          VOLT_RUNNER_CONFIG: runnerConfigPath,
+          VOLT_APP_NAME: config.name,
+          VOLT_APP_VERSION: config.version ?? '0.1.0',
+          VOLT_UPDATE_PUBLIC_KEY: config.updater?.publicKey ?? '',
+          ...(appIconPath ? { VOLT_APP_ICON: appIconPath } : {}),
+        },
+      });
+      console.log('[volt] Native binary compiled successfully.');
+
+      const targetRoot = cargoMetadata?.target_directory ?? resolve(workspaceRoot, 'target');
+      const releaseDir = options.target
+        ? resolve(targetRoot, options.target, 'release')
+        : resolve(targetRoot, 'release');
+      const { artifact, attemptedPaths } = resolveRuntimeArtifact(
+        releaseDir,
+        options.target,
+        cargoMetadata,
+      );
+      if (!artifact) {
+        console.error('[volt] Failed to locate compiled runtime artifact.');
+        if (attemptedPaths.length > 0) {
+          console.error(`[volt] Checked paths:\n  - ${attemptedPaths.join('\n  - ')}`);
+        } else {
+          console.error('[volt] No runtime artifact candidates could be derived from Cargo metadata.');
+        }
+      }
+      const runtimeArtifact = artifact ?? failBuild('[volt] Build failed due to missing runtime artifact.');
+
+      const runtimeArtifactExt = extname(runtimeArtifact.sourcePath);
+      const outputFileName = `${binaryName}${runtimeArtifactExt}`;
+      const destBinary = resolve(outputDir, outputFileName);
+      copyFileSync(runtimeArtifact.sourcePath, destBinary);
+      writeRuntimeArtifactManifest(outputDir, {
+        schemaVersion: 1,
+        artifactFileName: outputFileName,
+        cargoArtifactKind: runtimeArtifact.kind,
+        cargoTargetName: runtimeArtifact.targetName,
+        rustTarget: options.target ?? null,
+      });
+      console.log(
+        `[volt] Runtime artifact (${runtimeArtifact.kind}:${runtimeArtifact.targetName}) copied to ${destBinary}`,
+      );
+
+      if (buildPlatform === 'win32') {
+        const helperFileName =
+          artifactFileNameForTarget('volt-updater-helper', 'bin', buildPlatform)
+          ?? failBuild('[volt] Build failed due to missing Windows updater helper artifact.');
+        const helperSourcePath = resolve(releaseDir, helperFileName);
+        if (!existsSync(helperSourcePath)) {
+          failBuild('[volt] Build failed due to missing Windows updater helper artifact.');
+        }
+        const helperDestinationPath = resolve(outputDir, helperFileName);
+        copyFileSync(helperSourcePath, helperDestinationPath);
+        console.log(`[volt] Updater helper copied to ${helperDestinationPath}`);
+      }
+    } catch (err) {
+      failBuild('[volt] Cargo build failed:', err);
+    }
   }
 
   cleanupGeneratedBundles();

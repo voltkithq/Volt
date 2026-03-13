@@ -1,3 +1,6 @@
+use std::fs;
+use std::path::PathBuf;
+
 use volt_core::embed::AssetBundle;
 
 use super::RunnerError;
@@ -12,30 +15,62 @@ const EMBEDDED_ASSET_BUNDLE_BYTES: &[u8] =
 const EMBEDDED_BACKEND_BUNDLE_BYTES: &[u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/embedded-backend.js"));
 
+/// Sidecar file names — when a pre-built runner binary is used, the CLI
+/// places these files alongside the exe instead of embedding them.
+const SIDECAR_ASSET_BUNDLE: &str = "volt-assets.bin";
+const SIDECAR_BACKEND_BUNDLE: &str = "volt-backend.js";
+
 pub(crate) fn load_asset_bundle() -> Result<AssetBundle, RunnerError> {
-    match read_override_bytes_from_env_keys(&[
+    // 1. Env var override (dev/testing)
+    if let Some(bytes) = read_override_bytes_from_env_keys(&[
         ENV_RUNNER_ASSET_BUNDLE_PATH,
         ENV_RUNNER_ASSET_BUNDLE_LEGACY,
     ])? {
-        Some(bytes) => load_asset_bundle_from_bytes(&bytes),
-        None => load_asset_bundle_from_bytes(EMBEDDED_ASSET_BUNDLE_BYTES),
+        return load_asset_bundle_from_bytes(&bytes);
     }
+    // 2. Sidecar file alongside the exe (pre-built runner)
+    if let Some(bytes) = read_sidecar_file(SIDECAR_ASSET_BUNDLE) {
+        return load_asset_bundle_from_bytes(&bytes);
+    }
+    // 3. Embedded bytes (compiled-in)
+    load_asset_bundle_from_bytes(EMBEDDED_ASSET_BUNDLE_BYTES)
 }
 
 pub(crate) fn load_backend_bundle_source() -> Result<String, RunnerError> {
-    match read_override_bytes_from_env_keys(&[
+    // 1. Env var override (dev/testing)
+    if let Some(bytes) = read_override_bytes_from_env_keys(&[
         ENV_RUNNER_BACKEND_BUNDLE_PATH,
         ENV_RUNNER_BACKEND_BUNDLE_LEGACY,
     ])? {
-        Some(bytes) => decode_backend_bundle_bytes(
+        return decode_backend_bundle_bytes(
             &bytes,
             format!("{ENV_RUNNER_BACKEND_BUNDLE_PATH} override"),
-        ),
-        None => decode_backend_bundle_bytes(
-            EMBEDDED_BACKEND_BUNDLE_BYTES,
-            "embedded backend bundle".to_string(),
-        ),
+        );
     }
+    // 2. Sidecar file alongside the exe (pre-built runner)
+    if let Some(bytes) = read_sidecar_file(SIDECAR_BACKEND_BUNDLE) {
+        return decode_backend_bundle_bytes(&bytes, "sidecar backend bundle".to_string());
+    }
+    // 3. Embedded bytes (compiled-in)
+    decode_backend_bundle_bytes(
+        EMBEDDED_BACKEND_BUNDLE_BYTES,
+        "embedded backend bundle".to_string(),
+    )
+}
+
+/// Try to read a sidecar file located alongside the current executable.
+fn read_sidecar_file(name: &str) -> Option<Vec<u8>> {
+    let exe_dir = exe_directory()?;
+    let path = exe_dir.join(name);
+    fs::read(&path).ok()
+}
+
+/// Resolve the directory containing the current executable, following symlinks.
+fn exe_directory() -> Option<PathBuf> {
+    std::env::current_exe()
+        .ok()
+        .and_then(|p| fs::canonicalize(p).ok())
+        .and_then(|p| p.parent().map(|d| d.to_path_buf()))
 }
 
 pub(super) fn load_asset_bundle_from_bytes(bytes: &[u8]) -> Result<AssetBundle, RunnerError> {

@@ -53,6 +53,15 @@ export async function packageWindows(
     if (fmt === 'nsis') {
       console.log('[volt] Creating Windows NSIS installer...');
 
+      const additionalFiles: string[] = [];
+      if (updaterHelperFileName) additionalFiles.push(updaterHelperFileName);
+      // Include sidecar files if present (pre-built runner mode)
+      for (const sidecar of ['volt-assets.bin', 'volt-backend.js', 'volt-config.json']) {
+        if (existsSync(resolve(distDir, sidecar))) {
+          additionalFiles.push(sidecar);
+        }
+      }
+
       const nsisScript = generateNsisScript(
         appName,
         artifactVersion,
@@ -60,7 +69,7 @@ export async function packageWindows(
         distDir,
         outDir,
         runtimeArtifact.fileName,
-        updaterHelperFileName ? [updaterHelperFileName] : [],
+        additionalFiles,
         {
           installMode,
           silentAllUsers: windowsConfig?.silentAllUsers,

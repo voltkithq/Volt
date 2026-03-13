@@ -1,4 +1,6 @@
 use std::env::{self, VarError};
+use std::fs;
+use std::path::PathBuf;
 
 use volt_core::webview::WebViewConfig;
 use volt_core::window::WindowConfig;
@@ -16,6 +18,7 @@ const DEFAULT_WEBVIEW_URL: &str = "volt://localhost/index.html";
 const ENV_RUNNER_CONFIG_PATH: &str = "VOLT_RUNNER_CONFIG_PATH";
 const ENV_RUNNER_CONFIG_LEGACY: &str = "VOLT_RUNNER_CONFIG";
 const ENV_APP_NAME: &str = "VOLT_APP_NAME";
+const SIDECAR_RUNNER_CONFIG: &str = "volt-config.json";
 
 #[derive(Debug, Clone)]
 pub(crate) struct RunnerConfig {
@@ -31,18 +34,33 @@ pub(crate) struct RunnerConfig {
 }
 
 pub(crate) fn load_runner_config() -> Result<RunnerConfig, RunnerError> {
-    let config_bytes = match read_override_bytes_from_env_keys(&[
+    // 1. Env var override (dev/testing)
+    // 2. Sidecar file alongside the exe (pre-built runner)
+    // 3. Embedded bytes (compiled-in)
+    let config_bytes = if let Some(bytes) = read_override_bytes_from_env_keys(&[
         ENV_RUNNER_CONFIG_PATH,
         ENV_RUNNER_CONFIG_LEGACY,
     ])? {
-        Some(bytes) => bytes,
-        None => EMBEDDED_CONFIG_BYTES.to_vec(),
+        bytes
+    } else if let Some(bytes) = read_sidecar_config() {
+        bytes
+    } else {
+        EMBEDDED_CONFIG_BYTES.to_vec()
     };
 
     let mut config = parsing::parse_runner_config_bytes(&config_bytes)?;
     apply_app_name_override(&mut config, env::var(ENV_APP_NAME))?;
 
     Ok(config)
+}
+
+/// Try to read the runner config from a sidecar file alongside the current executable.
+fn read_sidecar_config() -> Option<Vec<u8>> {
+    let exe_dir = env::current_exe()
+        .ok()
+        .and_then(|p| fs::canonicalize(p).ok())
+        .and_then(|p| p.parent().map(PathBuf::from))?;
+    fs::read(exe_dir.join(SIDECAR_RUNNER_CONFIG)).ok()
 }
 
 fn apply_app_name_override(
