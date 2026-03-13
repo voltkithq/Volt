@@ -81,9 +81,15 @@ pub fn require_permission(permission: Permission) -> napi::Result<()> {
 
 fn permission_hint(permission: Permission) -> &'static str {
     match permission {
-        Permission::Dialog => "\n  Hint: Apps that open files typically need both 'dialog' and 'fs'.",
-        Permission::FileSystem => "\n  Hint: For user-selected folders, also add 'dialog' to use showOpenWithGrant().",
-        Permission::Database => "\n  Hint: The 'db' permission enables the volt:db SQLite module (backend only).",
+        Permission::Dialog => {
+            "\n  Hint: Apps that open files typically need both 'dialog' and 'fs'."
+        }
+        Permission::FileSystem => {
+            "\n  Hint: For user-selected folders, also add 'dialog' to use showOpenWithGrant()."
+        }
+        Permission::Database => {
+            "\n  Hint: The 'db' permission enables the volt:db SQLite module (backend only)."
+        }
         _ => "",
     }
 }
