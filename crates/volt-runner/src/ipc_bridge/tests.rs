@@ -126,6 +126,7 @@ fn direct_fast_path_respects_existing_rate_limit() {
 
     let response = dispatch_ipc_task(
         &client,
+        None,
         &json!({
             "id": "direct-rate-limit",
             "method": "volt:native:data.profile",

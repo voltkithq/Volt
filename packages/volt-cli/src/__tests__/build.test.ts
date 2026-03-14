@@ -241,11 +241,29 @@ describe('build runtime artifact resolution helpers', () => {
     );
   });
 
-  it('builds runner config payload with permissions and window options', () => {
+  it('builds runner config payload with permissions, plugin settings, and window options', () => {
     const payload = __testOnly.buildRunnerConfigPayload({
       name: 'IPC Demo',
       devtools: true,
       permissions: ['clipboard'],
+      plugins: {
+        enabled: ['acme.search'],
+        grants: {
+          'acme.search': ['fs', 'http'],
+        },
+        pluginDirs: ['./plugins'],
+        limits: {
+          activationTimeoutMs: 10_000,
+          deactivationTimeoutMs: 5_000,
+          callTimeoutMs: 30_000,
+          maxPlugins: 32,
+        },
+        spawning: {
+          strategy: 'lazy',
+          idleTimeoutMs: 300_000,
+          preSpawn: ['acme.search'],
+        },
+      },
       runtime: {
         poolSize: 3,
       },
@@ -261,6 +279,24 @@ describe('build runtime artifact resolution helpers', () => {
       name: 'IPC Demo',
       devtools: true,
       permissions: ['clipboard'],
+      plugins: {
+        enabled: ['acme.search'],
+        grants: {
+          'acme.search': ['fs', 'http'],
+        },
+        pluginDirs: ['./plugins'],
+        limits: {
+          activationTimeoutMs: 10_000,
+          deactivationTimeoutMs: 5_000,
+          callTimeoutMs: 30_000,
+          maxPlugins: 32,
+        },
+        spawning: {
+          strategy: 'lazy',
+          idleTimeoutMs: 300_000,
+          preSpawn: ['acme.search'],
+        },
+      },
       runtime: {
         poolSize: 3,
       },

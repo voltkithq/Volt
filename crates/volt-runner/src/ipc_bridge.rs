@@ -13,6 +13,7 @@ use volt_core::ipc::{
 
 use crate::js_runtime_pool::JsRuntimePoolClient;
 use crate::modules::volt_bench;
+use crate::plugin_manager::PluginManager;
 
 // Default IPC handler timeout. Dialogs are handled asynchronously on a separate
 // thread, so this timeout only applies to JS handlers running in the Boa runtime.
@@ -45,7 +46,15 @@ pub struct IpcBridge {
 }
 
 impl IpcBridge {
+    #[cfg(test)]
     pub fn new(runtime_client: JsRuntimePoolClient) -> Self {
+        Self::new_with_plugin_manager(runtime_client, None)
+    }
+
+    pub fn new_with_plugin_manager(
+        runtime_client: JsRuntimePoolClient,
+        plugin_manager: Option<PluginManager>,
+    ) -> Self {
         let in_flight_by_window = Arc::new(Mutex::new(HashMap::new()));
         let (task_tx, task_rx) = channel::unbounded::<IpcDispatchTask>();
         let worker_pool = Arc::new(IpcWorkerPool {
@@ -60,6 +69,7 @@ impl IpcBridge {
                 let worker_runtime_client = runtime_client.clone();
                 let worker_in_flight = in_flight_by_window.clone();
                 let worker_rx = task_rx.clone();
+                let worker_plugin_manager = plugin_manager.clone();
                 let worker_handle = thread::Builder::new().name(worker_name).spawn(move || {
                     loop {
                         let task = match worker_rx.recv() {
@@ -69,6 +79,7 @@ impl IpcBridge {
 
                         let response = dispatch_ipc_task(
                             &worker_runtime_client,
+                            worker_plugin_manager.as_ref(),
                             &task.raw,
                             &task.request_id,
                             task.timeout,
@@ -330,11 +341,25 @@ fn try_dispatch_native_fast_path(raw: &str) -> Option<IpcResponse> {
 
 fn dispatch_ipc_task(
     runtime_client: &JsRuntimePoolClient,
+    plugin_manager: Option<&PluginManager>,
     raw: &str,
     request_id: &str,
     timeout: Duration,
 ) -> IpcResponse {
     if let Some(response) = try_dispatch_native_fast_path(raw) {
+        return match runtime_client.check_ipc_rate_limit() {
+            Ok(()) => response,
+            Err(error) => IpcResponse::error_with_code(
+                request_id.to_string(),
+                error,
+                IPC_HANDLER_ERROR_CODE.to_string(),
+            ),
+        };
+    }
+
+    if let Some(plugin_manager) = plugin_manager
+        && let Some(response) = try_dispatch_plugin_route(plugin_manager, raw, timeout)
+    {
         return match runtime_client.check_ipc_rate_limit() {
             Ok(()) => response,
             Err(error) => IpcResponse::error_with_code(
@@ -367,6 +392,23 @@ fn dispatch_ipc_task(
                 )
             }
         })
+}
+
+fn try_dispatch_plugin_route(
+    plugin_manager: &PluginManager,
+    raw: &str,
+    timeout: Duration,
+) -> Option<IpcResponse> {
+    let parsed: JsonValue = serde_json::from_str(raw).ok()?;
+    if let Err(message) = validate_prototype_pollution(&parsed, 0) {
+        return Some(IpcResponse::error_with_code(
+            extract_request_id_from_value(&parsed),
+            message,
+            IPC_HANDLER_ERROR_CODE.to_string(),
+        ));
+    }
+    let request: IpcRequest = serde_json::from_value(parsed).ok()?;
+    plugin_manager.handle_ipc_request(&request, timeout)
 }
 
 fn extract_request_id_from_value(value: &JsonValue) -> String {

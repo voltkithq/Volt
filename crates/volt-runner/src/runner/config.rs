@@ -21,6 +21,61 @@ const ENV_APP_NAME: &str = "VOLT_APP_NAME";
 const SIDECAR_RUNNER_CONFIG: &str = "volt-config.json";
 const SENTINEL_RUNNER_CONFIG: &[u8; 32] = b"__VOLT_SENTINEL_RUNNER_CONFG_V1_";
 
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub(crate) struct RunnerPluginConfig {
+    pub(crate) enabled: Vec<String>,
+    pub(crate) grants: std::collections::BTreeMap<String, Vec<String>>,
+    pub(crate) plugin_dirs: Vec<String>,
+    pub(crate) limits: RunnerPluginLimits,
+    pub(crate) spawning: RunnerPluginSpawning,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RunnerPluginLimits {
+    pub(crate) activation_timeout_ms: u64,
+    pub(crate) deactivation_timeout_ms: u64,
+    pub(crate) call_timeout_ms: u64,
+    pub(crate) max_plugins: usize,
+    pub(crate) heartbeat_interval_ms: u64,
+    pub(crate) heartbeat_timeout_ms: u64,
+}
+
+impl Default for RunnerPluginLimits {
+    fn default() -> Self {
+        Self {
+            activation_timeout_ms: 10_000,
+            deactivation_timeout_ms: 5_000,
+            call_timeout_ms: 30_000,
+            max_plugins: 32,
+            heartbeat_interval_ms: 5_000,
+            heartbeat_timeout_ms: 3_000,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RunnerPluginSpawningStrategy {
+    Lazy,
+    Eager,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RunnerPluginSpawning {
+    pub(crate) strategy: RunnerPluginSpawningStrategy,
+    pub(crate) idle_timeout_ms: u64,
+    pub(crate) pre_spawn: Vec<String>,
+}
+
+impl Default for RunnerPluginSpawning {
+    fn default() -> Self {
+        Self {
+            strategy: RunnerPluginSpawningStrategy::Lazy,
+            idle_timeout_ms: 300_000,
+            pre_spawn: Vec::new(),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct RunnerConfig {
     pub(crate) app_name: String,
@@ -30,6 +85,7 @@ pub(crate) struct RunnerConfig {
     pub(crate) runtime_pool_size: Option<usize>,
     pub(crate) updater_telemetry_enabled: bool,
     pub(crate) updater_telemetry_sink: Option<String>,
+    pub(crate) plugins: RunnerPluginConfig,
     pub(crate) window: WindowConfig,
     pub(crate) webview: WebViewConfig,
 }
