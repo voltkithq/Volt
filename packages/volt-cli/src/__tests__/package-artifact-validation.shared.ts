@@ -59,7 +59,7 @@ export async function runPackageCommand(
 
   try {
     process.chdir(projectDir);
-    await packageCommand(options);
+    await packageCommand({ ...options, _skipPreflight: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (!message.startsWith('__PROCESS_EXIT__')) {

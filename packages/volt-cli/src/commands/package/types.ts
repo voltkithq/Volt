@@ -6,6 +6,8 @@ export interface PackageOptions {
   installMode?: string;
   json?: boolean;
   jsonOutput?: string;
+  /** @internal Skip pre-flight validation (testing only). */
+  _skipPreflight?: boolean;
 }
 
 export type ExecFileSyncFn = (

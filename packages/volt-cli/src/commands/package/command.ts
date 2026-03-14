@@ -62,9 +62,11 @@ export async function packageCommand(options: PackageOptions): Promise<void> {
     process.exit(1);
   }
 
-  enforcePreflightResult(
-    runPackagePreflight(cwd, platform, { format: format ?? undefined, distVoltDir }),
-  );
+  if (!options._skipPreflight) {
+    enforcePreflightResult(
+      runPackagePreflight(cwd, platform, { format: format ?? undefined, distVoltDir }),
+    );
+  }
 
   if (!existsSync(packageDir)) {
     mkdirSync(packageDir, { recursive: true });
