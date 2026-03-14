@@ -6,6 +6,8 @@
 use serde::{Deserialize, Serialize};
 use std::io::{self, BufReader, Read, Write};
 
+const MAX_FRAME_SIZE: usize = 16 * 1024 * 1024;
+
 /// Message types in the plugin-host IPC protocol.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -45,7 +47,6 @@ impl IpcMessage {
         }
     }
 
-    #[allow(dead_code)]
     pub fn response(
         id: impl Into<String>,
         method: impl Into<String>,
@@ -87,6 +88,16 @@ pub fn write_message<W: Write>(writer: &mut W, msg: &IpcMessage) -> io::Result<(
         serde_json::to_string(msg).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
     let body = format!("{json}\n");
     let body_bytes = body.as_bytes();
+    if body_bytes.len() > MAX_FRAME_SIZE {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "frame too large: {} bytes exceeds {} byte limit",
+                body_bytes.len(),
+                MAX_FRAME_SIZE
+            ),
+        ));
+    }
     let len = body_bytes.len() as u32;
     writer.write_all(&len.to_le_bytes())?;
     writer.write_all(body_bytes)?;
@@ -105,7 +116,7 @@ pub fn read_message<R: Read>(reader: &mut BufReader<R>) -> io::Result<Option<Ipc
     }
 
     let len = u32::from_le_bytes(len_buf) as usize;
-    if len == 0 || len > 16 * 1024 * 1024 {
+    if len == 0 || len > MAX_FRAME_SIZE {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             format!("invalid frame length: {len}"),
@@ -151,6 +162,11 @@ pub fn run_ipc_loop<R: Read, W: Write>(
             (MessageType::Signal, "cancel") => {
                 tracing::debug!(id = %msg.id, "received cancel signal (no-op in skeleton)");
             }
+            (MessageType::Signal, "activate") => {
+                tracing::info!("received activate signal");
+                let resp = IpcMessage::response(&msg.id, "activate", None);
+                write_message(writer, &resp)?;
+            }
             (MessageType::Request, method) => {
                 tracing::debug!(method = %method, id = %msg.id, "received request (unhandled in skeleton)");
                 let resp = IpcMessage::error_response(
@@ -160,6 +176,9 @@ pub fn run_ipc_loop<R: Read, W: Write>(
                     format!("no handler registered for method '{method}'"),
                 );
                 write_message(writer, &resp)?;
+            }
+            (MessageType::Response, _) => {
+                tracing::debug!(id = %msg.id, method = %msg.method, "received response (no pending requests in skeleton)");
             }
             (MessageType::Event, method) => {
                 tracing::debug!(method = %method, "received event (ignored in skeleton)");
@@ -325,5 +344,71 @@ mod tests {
         let parsed = roundtrip(&msg);
         assert_eq!(parsed.msg_type, MessageType::Event);
         assert_eq!(parsed.method, "stream:start");
+    }
+
+    #[test]
+    fn test_ipc_loop_activate_signal() {
+        let mut input = Vec::new();
+        write_message(&mut input, &IpcMessage::signal("act-1", "activate")).unwrap();
+        write_message(&mut input, &IpcMessage::signal("d", "deactivate")).unwrap();
+
+        let mut reader = BufReader::new(Cursor::new(input));
+        let mut output = Vec::new();
+        run_ipc_loop(&mut reader, &mut output).unwrap();
+
+        let mut out_reader = BufReader::new(Cursor::new(output));
+        let resp = read_message(&mut out_reader).unwrap().unwrap();
+        assert_eq!(resp.msg_type, MessageType::Response);
+        assert_eq!(resp.method, "activate");
+        assert_eq!(resp.id, "act-1");
+        assert!(resp.payload.is_none());
+        // No more messages
+        assert!(read_message(&mut out_reader).unwrap().is_none());
+    }
+
+    #[test]
+    fn test_read_rejects_oversized_frame() {
+        let mut buf = Vec::new();
+        let oversized_len = (MAX_FRAME_SIZE as u32) + 1;
+        buf.extend_from_slice(&oversized_len.to_le_bytes());
+        buf.extend_from_slice(&vec![0u8; oversized_len as usize]);
+
+        let mut reader = BufReader::new(Cursor::new(buf));
+        let result = read_message(&mut reader);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert!(err.to_string().contains("invalid frame length"));
+    }
+
+    #[test]
+    fn test_read_rejects_zero_length_frame() {
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&0u32.to_le_bytes());
+
+        let mut reader = BufReader::new(Cursor::new(buf));
+        let result = read_message(&mut reader);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert!(err.to_string().contains("invalid frame length"));
+    }
+
+    #[test]
+    fn test_write_rejects_oversized_frame() {
+        // Create a message with a payload large enough to exceed MAX_FRAME_SIZE
+        let big_string = "x".repeat(MAX_FRAME_SIZE + 1);
+        let msg = IpcMessage {
+            msg_type: MessageType::Request,
+            id: "big".into(),
+            method: "test".into(),
+            payload: Some(serde_json::json!(big_string)),
+            error: None,
+        };
+        let mut buf = Vec::new();
+        let result = write_message(&mut buf, &msg);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("frame too large"));
     }
 }

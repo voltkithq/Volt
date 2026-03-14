@@ -371,6 +371,57 @@ describe('validatePluginManifest', () => {
     expect(result.errors.length).toBeGreaterThanOrEqual(6);
   });
 
+  // ── Signature validation ─────────────────────────────────────
+
+  it('accepts a valid signature', () => {
+    const result = validatePluginManifest(
+      validManifest({
+        signature: { algorithm: 'ed25519', value: 'abc123def456' },
+      }),
+    );
+    expect(result.valid).toBe(true);
+    expect(result.manifest!.signature).toEqual({
+      algorithm: 'ed25519',
+      value: 'abc123def456',
+    });
+  });
+
+  it('accepts manifest without signature (still valid)', () => {
+    const result = validatePluginManifest(validManifest());
+    expect(result.valid).toBe(true);
+    expect(result.manifest!.signature).toBeUndefined();
+  });
+
+  it('rejects signature as non-object', () => {
+    const result = validatePluginManifest(validManifest({ signature: 'bad' }));
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.field === 'signature')).toBe(true);
+  });
+
+  it('rejects signature with missing algorithm', () => {
+    const result = validatePluginManifest(
+      validManifest({ signature: { value: 'abc123' } }),
+    );
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.field === 'signature.algorithm')).toBe(true);
+  });
+
+  it('rejects signature with missing value', () => {
+    const result = validatePluginManifest(
+      validManifest({ signature: { algorithm: 'ed25519' } }),
+    );
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.field === 'signature.value')).toBe(true);
+  });
+
+  it('rejects signature with empty algorithm', () => {
+    const result = validatePluginManifest(
+      validManifest({ signature: { algorithm: '', value: 'abc' } }),
+    );
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.field === 'signature.algorithm')).toBe(true);
+  });
+
   // ── Extra fields are tolerated ─────────────────────────────────
 
   it('tolerates extra top-level fields', () => {

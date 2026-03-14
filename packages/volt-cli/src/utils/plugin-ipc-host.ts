@@ -21,31 +21,53 @@ export interface IpcMessage {
   error: { code: string; message: string } | null;
 }
 
+// ── Stream method constants ─────────────────────────────────────
+
+export const STREAM_METHODS = {
+  START: 'stream:start',
+  CHUNK: 'stream:chunk',
+  END: 'stream:end',
+  ERROR: 'stream:error',
+  PAUSE: 'stream:pause',
+  RESUME: 'stream:resume',
+} as const;
+
 // ── Framing ──────────────────────────────────────────────────────
+
+const MAX_FRAME_SIZE = 16 * 1024 * 1024;
 
 export function frameMessage(msg: IpcMessage): Buffer {
   const json = JSON.stringify(msg);
   const body = Buffer.from(json + '\n', 'utf-8');
+  if (body.length > MAX_FRAME_SIZE) {
+    throw new Error(
+      `frame too large: ${body.length} bytes exceeds ${MAX_FRAME_SIZE} byte limit`,
+    );
+  }
   const header = Buffer.alloc(4);
   header.writeUInt32LE(body.length, 0);
   return Buffer.concat([header, body]);
 }
 
 export interface ParsedFrame {
-  message: IpcMessage;
+  message: IpcMessage | null;
   bytesConsumed: number;
 }
 
 export function tryParseFrame(buffer: Buffer, offset: number): ParsedFrame | null {
   if (buffer.length - offset < 4) return null;
   const length = buffer.readUInt32LE(offset);
-  if (length === 0 || length > 16 * 1024 * 1024) return null;
+  if (length === 0 || length > MAX_FRAME_SIZE) return null;
   if (buffer.length - offset - 4 < length) return null;
   const jsonBytes = buffer.subarray(offset + 4, offset + 4 + length);
   const raw = jsonBytes.toString('utf-8');
   const stripped = raw.endsWith('\n') ? raw.slice(0, -1) : raw;
-  const message = JSON.parse(stripped) as IpcMessage;
-  return { message, bytesConsumed: 4 + length };
+  try {
+    const message = JSON.parse(stripped) as IpcMessage;
+    return { message, bytesConsumed: 4 + length };
+  } catch {
+    return { message: null, bytesConsumed: 4 + length };
+  }
 }
 
 // ── Pending Request Tracking ─────────────────────────────────────
@@ -136,10 +158,6 @@ export class PluginIpcHost extends EventEmitter {
    */
   waitForReady(timeoutMs = 10000): Promise<void> {
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        reject(new Error('Plugin did not send ready signal within timeout'));
-      }, timeoutMs);
-
       const handler = (msg: IpcMessage) => {
         if (msg.type === 'signal' && msg.method === 'ready') {
           clearTimeout(timer);
@@ -147,6 +165,12 @@ export class PluginIpcHost extends EventEmitter {
           resolve();
         }
       };
+
+      const timer = setTimeout(() => {
+        this.off('message', handler);
+        reject(new Error('Plugin did not send ready signal within timeout'));
+      }, timeoutMs);
+
       this.on('message', handler);
     });
   }
@@ -277,7 +301,9 @@ export class PluginIpcHost extends EventEmitter {
       const parsed = tryParseFrame(this.readBuf, offset);
       if (!parsed) break;
       offset += parsed.bytesConsumed;
-      this.handleMessage(parsed.message);
+      if (parsed.message !== null) {
+        this.handleMessage(parsed.message);
+      }
     }
 
     if (offset > 0) {
@@ -321,12 +347,6 @@ export class PluginIpcHost extends EventEmitter {
     }
     this.awaitingHeartbeatAck = true;
     this.sendSignal('heartbeat');
-
-    setTimeout(() => {
-      if (this.awaitingHeartbeatAck) {
-        // Will be counted as a miss on next heartbeat interval
-      }
-    }, this.heartbeatTimeoutMs);
   }
 
   private enqueueOrSend(msg: IpcMessage): Promise<IpcMessage> {
@@ -380,7 +400,7 @@ export class PluginIpcHost extends EventEmitter {
   }
 
   private failAllPending(code: string, message: string): void {
-    for (const [id, req] of this.pending) {
+    for (const [, req] of this.pending) {
       clearTimeout(req.timer);
       req.reject(new Error(`${code}: ${message}`));
     }
