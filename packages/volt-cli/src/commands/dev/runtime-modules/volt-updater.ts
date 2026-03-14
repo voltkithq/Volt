@@ -33,6 +33,6 @@ export async function downloadAndInstall(updateInfo: UpdateInfo): Promise<void> 
 }
 
 export function cancelDownloadAndInstall(): void {
-  throw new Error('cancelDownloadAndInstall is not implemented in dev mode.');
+  // No-op in dev mode — there is no real update download to cancel.
 }
 

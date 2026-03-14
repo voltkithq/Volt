@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "volt dev",
     "build": "volt build",
-    "lint": "echo ok",
-    "test": "echo ok"
+    "lint": "tsc --noEmit",
+    "test": "tsc --noEmit"
   },
   "dependencies": {
     "voltkit": "workspace:*"
