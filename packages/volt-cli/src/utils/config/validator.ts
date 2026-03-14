@@ -7,6 +7,7 @@ import { normalizeWindowsSigningProvider } from '../signing/provider.js';
 
 const BASE64_ED25519_PUBLIC_KEY_LENGTH = 32;
 const LOOPBACK_IPV4_OCTET_COUNT = 4;
+const VALID_PLUGIN_SPAWN_STRATEGIES = ['lazy', 'eager'] as const;
 
 export function validateConfig(config: VoltConfig, filename: string, options: LoadConfigOptions): VoltConfig {
   const errors: string[] = [];
@@ -121,6 +122,186 @@ export function validateConfig(config: VoltConfig, filename: string, options: Lo
     console.error(`[volt] Error in ${filename}: ${message}`);
     errors.push(message);
     delete configRecord.runtimePoolSize;
+  }
+
+  const pluginsRecord = configRecord.plugins;
+  if (pluginsRecord !== undefined) {
+    if (!isPlainObject(pluginsRecord)) {
+      const message = `'plugins' must be an object when provided.`;
+      console.error(`[volt] Error in ${filename}: ${message}`);
+      errors.push(message);
+      delete configRecord.plugins;
+    } else {
+      const enabled = pluginsRecord.enabled;
+      if (enabled !== undefined) {
+        if (!Array.isArray(enabled)) {
+          const message = `'plugins.enabled' must be an array of non-empty plugin IDs.`;
+          console.error(`[volt] Error in ${filename}: ${message}`);
+          errors.push(message);
+          delete pluginsRecord.enabled;
+        } else {
+          pluginsRecord.enabled = sanitizeStringArray(
+            enabled,
+            'plugins.enabled',
+            filename,
+            errors,
+          );
+        }
+      }
+
+      const grants = pluginsRecord.grants;
+      if (grants !== undefined) {
+        if (!isPlainObject(grants)) {
+          const message = `'plugins.grants' must be an object when provided.`;
+          console.error(`[volt] Error in ${filename}: ${message}`);
+          errors.push(message);
+          delete pluginsRecord.grants;
+        } else {
+          for (const [pluginId, grantedPermissions] of Object.entries(grants)) {
+            if (pluginId.trim().length === 0) {
+              const message = `'plugins.grants' keys must be non-empty plugin IDs.`;
+              console.error(`[volt] Error in ${filename}: ${message}`);
+              errors.push(message);
+              delete grants[pluginId];
+              continue;
+            }
+
+            if (!Array.isArray(grantedPermissions)) {
+              const message = `'plugins.grants.${pluginId}' must be an array of permissions.`;
+              console.error(`[volt] Error in ${filename}: ${message}`);
+              errors.push(message);
+              delete grants[pluginId];
+              continue;
+            }
+
+            grants[pluginId] = sanitizePermissionArray(
+              grantedPermissions,
+              `plugins.grants.${pluginId}`,
+              filename,
+              errors,
+            );
+          }
+        }
+      }
+
+      const pluginDirs = pluginsRecord.pluginDirs;
+      if (pluginDirs !== undefined) {
+        if (!Array.isArray(pluginDirs)) {
+          const message = `'plugins.pluginDirs' must be an array of non-empty paths.`;
+          console.error(`[volt] Error in ${filename}: ${message}`);
+          errors.push(message);
+          delete pluginsRecord.pluginDirs;
+        } else {
+          pluginsRecord.pluginDirs = sanitizeStringArray(
+            pluginDirs,
+            'plugins.pluginDirs',
+            filename,
+            errors,
+          );
+        }
+      }
+
+      const limits = pluginsRecord.limits;
+      if (limits !== undefined) {
+        if (!isPlainObject(limits)) {
+          const message = `'plugins.limits' must be an object when provided.`;
+          console.error(`[volt] Error in ${filename}: ${message}`);
+          errors.push(message);
+          delete pluginsRecord.limits;
+        } else {
+          validatePositiveIntegerField(
+            limits,
+            'activationTimeoutMs',
+            'plugins.limits.activationTimeoutMs',
+            filename,
+            errors,
+          );
+          validatePositiveIntegerField(
+            limits,
+            'deactivationTimeoutMs',
+            'plugins.limits.deactivationTimeoutMs',
+            filename,
+            errors,
+          );
+          validatePositiveIntegerField(
+            limits,
+            'callTimeoutMs',
+            'plugins.limits.callTimeoutMs',
+            filename,
+            errors,
+          );
+          validatePositiveIntegerField(
+            limits,
+            'maxPlugins',
+            'plugins.limits.maxPlugins',
+            filename,
+            errors,
+          );
+          validatePositiveIntegerField(
+            limits,
+            'heartbeatIntervalMs',
+            'plugins.limits.heartbeatIntervalMs',
+            filename,
+            errors,
+          );
+          validatePositiveIntegerField(
+            limits,
+            'heartbeatTimeoutMs',
+            'plugins.limits.heartbeatTimeoutMs',
+            filename,
+            errors,
+          );
+        }
+      }
+
+      const spawning = pluginsRecord.spawning;
+      if (spawning !== undefined) {
+        if (!isPlainObject(spawning)) {
+          const message = `'plugins.spawning' must be an object when provided.`;
+          console.error(`[volt] Error in ${filename}: ${message}`);
+          errors.push(message);
+          delete pluginsRecord.spawning;
+        } else {
+          const strategy = spawning.strategy;
+          if (strategy !== undefined) {
+            if (
+              typeof strategy !== 'string'
+              || !(VALID_PLUGIN_SPAWN_STRATEGIES as readonly string[]).includes(strategy)
+            ) {
+              const message = `'plugins.spawning.strategy' must be "lazy" or "eager".`;
+              console.error(`[volt] Error in ${filename}: ${message}`);
+              errors.push(message);
+              delete spawning.strategy;
+            }
+          }
+
+          validatePositiveIntegerField(
+            spawning,
+            'idleTimeoutMs',
+            'plugins.spawning.idleTimeoutMs',
+            filename,
+            errors,
+          );
+
+          const preSpawn = spawning.preSpawn;
+          if (preSpawn !== undefined) {
+            if (!Array.isArray(preSpawn)) {
+              const message = `'plugins.spawning.preSpawn' must be an array of non-empty plugin IDs.`;
+              console.error(`[volt] Error in ${filename}: ${message}`);
+              errors.push(message);
+              delete spawning.preSpawn;
+            } else {
+              spawning.preSpawn = sanitizeStringArray(
+                preSpawn,
+                'plugins.spawning.preSpawn',
+                filename,
+                errors,
+              );
+            }
+          }
+        }
+      }
+    }
   }
 
   const packageRecord = configRecord.package as Record<string, unknown> | undefined;
@@ -283,6 +464,89 @@ function normalizeWindowsInstallMode(value: unknown): 'perMachine' | 'perUser' |
     return 'perUser';
   }
   return null;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function sanitizeStringArray(
+  values: unknown[],
+  fieldPath: string,
+  filename: string,
+  errors: string[],
+): string[] {
+  const normalized: string[] = [];
+
+  for (const value of values) {
+    if (typeof value !== 'string' || value.trim().length === 0) {
+      const message = `'${fieldPath}' entries must be non-empty strings.`;
+      console.error(`[volt] Error in ${filename}: ${message}`);
+      errors.push(message);
+      continue;
+    }
+
+    const trimmed = value.trim();
+    if (!normalized.includes(trimmed)) {
+      normalized.push(trimmed);
+    }
+  }
+
+  return normalized;
+}
+
+function sanitizePermissionArray(
+  values: unknown[],
+  fieldPath: string,
+  filename: string,
+  errors: string[],
+): (typeof VALID_PERMISSIONS)[number][] {
+  const normalized: (typeof VALID_PERMISSIONS)[number][] = [];
+  const validPermissions = VALID_PERMISSIONS as readonly string[];
+
+  for (const value of values) {
+    if (typeof value !== 'string') {
+      const message = `'${fieldPath}' entries must be valid permissions.`;
+      console.error(`[volt] Error in ${filename}: ${message}`);
+      errors.push(message);
+      continue;
+    }
+
+    if (!validPermissions.includes(value)) {
+      const message = `Unknown permission '${value}' in '${fieldPath}'.`;
+      console.error(`[volt] Error in ${filename}: ${message}`);
+      console.error(`[volt] Valid permissions: ${VALID_PERMISSIONS.join(', ')}`);
+      errors.push(message);
+      continue;
+    }
+
+    const permission = value as (typeof VALID_PERMISSIONS)[number];
+    if (!normalized.includes(permission)) {
+      normalized.push(permission);
+    }
+  }
+
+  return normalized;
+}
+
+function validatePositiveIntegerField(
+  record: Record<string, unknown>,
+  key: string,
+  fieldPath: string,
+  filename: string,
+  errors: string[],
+): void {
+  const value = record[key];
+  if (value === undefined) {
+    return;
+  }
+
+  if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) {
+    const message = `'${fieldPath}' must be a positive integer.`;
+    console.error(`[volt] Error in ${filename}: ${message}`);
+    errors.push(message);
+    delete record[key];
+  }
 }
 
 function isValidUpdaterEndpoint(value: string): boolean {

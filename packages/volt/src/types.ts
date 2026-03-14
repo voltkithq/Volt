@@ -18,6 +18,8 @@ export interface VoltConfig {
   updater?: UpdaterConfig;
   /** Boa runtime pool configuration for production builds. */
   runtime?: RuntimeConfig;
+  /** Plugin discovery, grants, and lifecycle controls. */
+  plugins?: PluginConfig;
   /** Legacy alias for runtime.poolSize. Prefer using runtime.poolSize. */
   runtimePoolSize?: number;
   /** Whether to enable devtools. Defaults to true in dev, false in production. */
@@ -84,6 +86,49 @@ export interface BuildConfig {
 export interface RuntimeConfig {
   /** Number of Boa runtimes in the IPC pool. Clamped to [2, 4] by the runner. */
   poolSize?: number;
+}
+
+/** Plugin runtime configuration. */
+export interface PluginConfig {
+  /** Enabled plugin IDs. */
+  enabled?: string[];
+  /** Per-plugin capability grants. */
+  grants?: Record<string, Permission[]>;
+  /** Directories scanned for `volt-plugin.json` manifests. */
+  pluginDirs?: string[];
+  /** Runtime limits enforced by the plugin host manager. */
+  limits?: PluginLimitsConfig;
+  /** Spawn strategy and idle behavior for plugin processes. */
+  spawning?: PluginSpawningConfig;
+}
+
+/** Plugin runtime limits. */
+export interface PluginLimitsConfig {
+  /** Maximum time to wait for plugin readiness and activation. */
+  activationTimeoutMs?: number;
+  /** Maximum time to wait for graceful plugin shutdown. */
+  deactivationTimeoutMs?: number;
+  /** Maximum time for a host-to-plugin call. */
+  callTimeoutMs?: number;
+  /** Maximum number of enabled plugins. */
+  maxPlugins?: number;
+  /** Interval between plugin heartbeat probes. */
+  heartbeatIntervalMs?: number;
+  /** Maximum time to wait for each heartbeat acknowledgement. */
+  heartbeatTimeoutMs?: number;
+}
+
+/** Supported plugin spawn strategies. */
+export type PluginSpawnStrategy = 'lazy' | 'eager';
+
+/** Plugin process spawning controls. */
+export interface PluginSpawningConfig {
+  /** Whether plugins should spawn on first use or after the window is visible. */
+  strategy?: PluginSpawnStrategy;
+  /** Idle time before an unused plugin is deactivated. */
+  idleTimeoutMs?: number;
+  /** Plugin IDs that should be spawned after the window is visible. */
+  preSpawn?: string[];
 }
 
 /** Packaging configuration for platform-specific installers. */

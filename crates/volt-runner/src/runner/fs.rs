@@ -2,6 +2,8 @@ use std::env;
 use std::path::PathBuf;
 
 #[cfg(test)]
+use super::config::RunnerPluginConfig;
+#[cfg(test)]
 use volt_core::webview::WebViewConfig;
 #[cfg(test)]
 use volt_core::window::WindowConfig;
@@ -43,6 +45,7 @@ mod tests {
             runtime_pool_size: None,
             updater_telemetry_enabled: false,
             updater_telemetry_sink: None,
+            plugins: RunnerPluginConfig::default(),
             window: WindowConfig::default(),
             webview: WebViewConfig::default(),
         }

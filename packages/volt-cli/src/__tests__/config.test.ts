@@ -90,6 +90,26 @@ describe('config validation (via loadConfig internals)', () => {
       },
       updater: { endpoint: 'https://u.com', publicKey: 'key' },
       runtime: { poolSize: 3 },
+      plugins: {
+        enabled: ['acme.search'],
+        grants: {
+          'acme.search': ['fs', 'http'],
+        },
+        pluginDirs: ['./plugins'],
+        limits: {
+          activationTimeoutMs: 10_000,
+          deactivationTimeoutMs: 5_000,
+          callTimeoutMs: 30_000,
+          maxPlugins: 32,
+          heartbeatIntervalMs: 1_500,
+          heartbeatTimeoutMs: 900,
+        },
+        spawning: {
+          strategy: 'lazy',
+          idleTimeoutMs: 300_000,
+          preSpawn: ['acme.search'],
+        },
+      },
       devtools: true,
     };
     expect(config.name).toBe('Full');
@@ -182,6 +202,114 @@ describe('config validation (via loadConfig internals)', () => {
     );
     expect(errorSpy).toHaveBeenCalledWith(
       expect.stringContaining("'updater.publicKey' must be a base64 Ed25519 public key."),
+    );
+    errorSpy.mockRestore();
+  });
+
+  it('accepts well-formed plugin configuration', () => {
+    const validated = validateConfig(
+      {
+        name: 'Plugin App',
+        plugins: {
+          enabled: ['acme.search', 'acme.sync'],
+          grants: {
+            'acme.search': ['fs', 'http'],
+            'acme.sync': ['secureStorage'],
+          },
+          pluginDirs: ['./plugins', './more-plugins'],
+          limits: {
+            activationTimeoutMs: 10_000,
+            deactivationTimeoutMs: 5_000,
+            callTimeoutMs: 30_000,
+            maxPlugins: 32,
+            heartbeatIntervalMs: 1_500,
+            heartbeatTimeoutMs: 900,
+          },
+          spawning: {
+            strategy: 'lazy',
+            idleTimeoutMs: 300_000,
+            preSpawn: ['acme.search'],
+          },
+        },
+      },
+      'volt.config.ts',
+      { strict: false },
+    );
+
+    expect(validated.plugins).toEqual({
+      enabled: ['acme.search', 'acme.sync'],
+      grants: {
+        'acme.search': ['fs', 'http'],
+        'acme.sync': ['secureStorage'],
+      },
+      pluginDirs: ['./plugins', './more-plugins'],
+      limits: {
+        activationTimeoutMs: 10_000,
+        deactivationTimeoutMs: 5_000,
+        callTimeoutMs: 30_000,
+        maxPlugins: 32,
+        heartbeatIntervalMs: 1_500,
+        heartbeatTimeoutMs: 900,
+      },
+      spawning: {
+        strategy: 'lazy',
+        idleTimeoutMs: 300_000,
+        preSpawn: ['acme.search'],
+      },
+    });
+  });
+
+  it('sanitizes malformed plugin configuration fields without dropping the full object', () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const validated = validateConfig(
+      {
+        name: 'Plugin App',
+        plugins: {
+          enabled: ['acme.search', '', 'acme.search'],
+          grants: {
+            'acme.search': ['fs', 'bogus', 'http'],
+          },
+          pluginDirs: ['./plugins', '   ', './plugins'],
+          limits: {
+            activationTimeoutMs: 0,
+            deactivationTimeoutMs: 5_000,
+            heartbeatIntervalMs: 0,
+          },
+          spawning: {
+            strategy: 'sometimes',
+            idleTimeoutMs: -1,
+            preSpawn: ['acme.search', '', 'acme.search'],
+          },
+        },
+      },
+      'volt.config.ts',
+      { strict: false },
+    );
+
+    expect(validated.plugins).toEqual({
+      enabled: ['acme.search'],
+      grants: {
+        'acme.search': ['fs', 'http'],
+      },
+      pluginDirs: ['./plugins'],
+      limits: {
+        deactivationTimeoutMs: 5_000,
+      },
+      spawning: {
+        preSpawn: ['acme.search'],
+      },
+    });
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("'plugins.enabled' entries must be non-empty strings."),
+    );
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Unknown permission 'bogus' in 'plugins.grants.acme.search'."),
+    );
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("'plugins.spawning.strategy' must be \"lazy\" or \"eager\"."),
+    );
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("'plugins.limits.heartbeatIntervalMs' must be a positive integer."),
     );
     errorSpy.mockRestore();
   });

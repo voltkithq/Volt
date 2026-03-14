@@ -7,6 +7,7 @@ mod ipc_bridge;
 mod js_runtime;
 mod js_runtime_pool;
 mod modules;
+mod plugin_manager;
 mod runner;
 
 use runner::RunnerError;
@@ -58,7 +59,16 @@ fn run() -> Result<(), RunnerError> {
         .load_backend_bundle(&backend_bundle_source)
         .map_err(|err| RunnerError::App(format!("failed to load backend bundle: {err}")))?;
     let runtime_client = js_runtime.client();
-    let ipc_bridge = ipc_bridge::IpcBridge::new(runtime_client.clone());
+    let plugin_manager = plugin_manager::PluginManager::new(
+        config.app_name.clone(),
+        &config.permissions,
+        config.plugins.clone(),
+    )
+    .map_err(|error| RunnerError::App(format!("failed to initialize plugin manager: {error}")))?;
+    let ipc_bridge = ipc_bridge::IpcBridge::new_with_plugin_manager(
+        runtime_client.clone(),
+        Some(plugin_manager.clone()),
+    );
 
     let mut app = App::new(AppConfig {
         name: config.app_name,
@@ -69,9 +79,11 @@ fn run() -> Result<(), RunnerError> {
     app.set_asset_bundle(bundle);
     app.create_window(config.window, config.webview)
         .map_err(|err| RunnerError::App(format!("failed to create window: {err}")))?;
+    plugin_manager.start_pre_spawn();
     if let Some(healthy_startup_window) = startup_recovery {
         modules::volt_updater::spawn_healthy_startup_clearer(healthy_startup_window);
     }
+    let plugin_manager_for_events = plugin_manager.clone();
     let app_result = app.run(move |event| match event {
         AppEvent::IpcMessage { js_window_id, raw } => {
             ipc_bridge.handle_message(js_window_id.clone(), raw.clone());
@@ -96,6 +108,9 @@ fn run() -> Result<(), RunnerError> {
             {
                 tracing::error!(error = %error, tray_id = %tray_id, "failed to dispatch tray event");
             }
+        }
+        AppEvent::Quit => {
+            plugin_manager_for_events.shutdown_all();
         }
         _ => {}
     });

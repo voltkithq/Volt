@@ -9,6 +9,7 @@ default = []
 devtools = ["wry/devtools"]
 
 [dependencies]
+volt-permissions = { path = "../volt-permissions" }
 wry = "0.54"
 tao = "0.34"
 tray-icon = "0.21"
