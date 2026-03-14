@@ -6,13 +6,10 @@ use std::time::Duration;
 use crossbeam_channel as channel;
 use serde_json::Value as JsonValue;
 use volt_core::command::{self, AppCommand};
-use volt_core::dialog;
-use volt_core::grant_store;
 use volt_core::ipc::{
     IPC_HANDLER_ERROR_CODE, IPC_HANDLER_TIMEOUT_CODE, IPC_MAX_REQUEST_BYTES, IpcRequest,
     IpcResponse, response_script,
 };
-use volt_core::permissions::{CapabilityGuard, Permission};
 
 use crate::js_runtime_pool::JsRuntimePoolClient;
 use crate::modules::volt_bench;
@@ -48,7 +45,7 @@ pub struct IpcBridge {
 }
 
 impl IpcBridge {
-    pub fn new(runtime_client: JsRuntimePoolClient, permissions: &[String]) -> Self {
+    pub fn new(runtime_client: JsRuntimePoolClient) -> Self {
         let in_flight_by_window = Arc::new(Mutex::new(HashMap::new()));
         let (task_tx, task_rx) = channel::unbounded::<IpcDispatchTask>();
         let worker_pool = Arc::new(IpcWorkerPool {
@@ -56,14 +53,12 @@ impl IpcBridge {
             worker_handles: Mutex::new(Vec::new()),
         });
 
-        let permissions = Arc::new(CapabilityGuard::from_names(permissions));
         let worker_count = DEFAULT_IPC_DISPATCH_WORKER_COUNT.max(1);
         if let Ok(mut handles) = worker_pool.worker_handles.lock() {
             for worker_index in 0..worker_count {
                 let worker_name = format!("volt-ipc-bridge-{worker_index}");
                 let worker_runtime_client = runtime_client.clone();
                 let worker_in_flight = in_flight_by_window.clone();
-                let worker_permissions = permissions.clone();
                 let worker_rx = task_rx.clone();
                 let worker_handle = thread::Builder::new().name(worker_name).spawn(move || {
                     loop {
@@ -71,21 +66,6 @@ impl IpcBridge {
                             Ok(task) => task,
                             Err(_) => return,
                         };
-
-                        // Check if this is an async native fast path (e.g. dialog).
-                        // If so, the handler sends the response itself and frees this worker.
-                        let async_ctx = AsyncFastPathContext {
-                            js_window_id: task.js_window_id.clone(),
-                            in_flight: worker_in_flight.clone(),
-                            permissions: worker_permissions.clone(),
-                        };
-                        if try_dispatch_async_native_fast_path(
-                            &task.raw,
-                            &task.request_id,
-                            async_ctx,
-                        ) {
-                            continue;
-                        }
 
                         let response = dispatch_ipc_task(
                             &worker_runtime_client,
@@ -424,179 +404,6 @@ fn validate_prototype_pollution(value: &JsonValue, depth: usize) -> Result<(), S
     }
 
     Ok(())
-}
-
-/// Context for async native fast paths that need to send responses and release
-/// in-flight slots after a spawned thread completes.
-struct AsyncFastPathContext {
-    js_window_id: String,
-    in_flight: Arc<Mutex<HashMap<String, usize>>>,
-    permissions: Arc<CapabilityGuard>,
-}
-
-/// Dialog method names that should be handled as async native fast paths.
-const ASYNC_DIALOG_METHODS: &[&str] = &[
-    "show-open-dialog",
-    "show-save-dialog",
-    "show-message-dialog",
-    "show-open-with-grant",
-];
-
-/// Try to dispatch an IPC request as an async native fast path.
-/// Returns `true` if the method was handled (response will be sent asynchronously).
-/// Returns `false` if the method should be dispatched through the normal Boa runtime path.
-fn try_dispatch_async_native_fast_path(
-    raw: &str,
-    request_id: &str,
-    ctx: AsyncFastPathContext,
-) -> bool {
-    let parsed: JsonValue = match serde_json::from_str(raw) {
-        Ok(v) => v,
-        Err(_) => return false,
-    };
-
-    let method = parsed
-        .get("method")
-        .and_then(JsonValue::as_str)
-        .unwrap_or("");
-
-    if !ASYNC_DIALOG_METHODS.contains(&method) {
-        return false;
-    }
-
-    // Permission check before spawning the dialog thread
-    let required_permissions = if method == "show-open-with-grant" {
-        vec![Permission::Dialog, Permission::FileSystem]
-    } else {
-        vec![Permission::Dialog]
-    };
-    for perm in &required_permissions {
-        if let Err(err) = ctx.permissions.check(*perm) {
-            let response = IpcResponse::error_with_code(
-                request_id.to_string(),
-                format!(
-                    "Permission denied: {err}. Add '{}' to permissions in volt.config.ts.",
-                    perm.as_str()
-                ),
-                IPC_HANDLER_ERROR_CODE.to_string(),
-            );
-            IpcBridge::send_response_to_window(&ctx.js_window_id, response);
-            IpcBridge::release_window_slot_for(ctx.in_flight.as_ref(), &ctx.js_window_id);
-            return true;
-        }
-    }
-
-    let args = parsed
-        .get("args")
-        .cloned()
-        .unwrap_or(JsonValue::Object(Default::default()));
-    let request_id = request_id.to_string();
-    let method = method.to_string();
-
-    thread::Builder::new()
-        .name("volt-dialog".to_string())
-        .spawn(move || {
-            let response = execute_dialog(&method, &request_id, args);
-            IpcBridge::send_response_to_window(&ctx.js_window_id, response);
-            IpcBridge::release_window_slot_for(ctx.in_flight.as_ref(), &ctx.js_window_id);
-        })
-        .ok();
-
-    true
-}
-
-fn execute_dialog(method: &str, request_id: &str, args: JsonValue) -> IpcResponse {
-    let result = match method {
-        "show-open-dialog" => {
-            let options: dialog::OpenDialogOptions = match serde_json::from_value(args) {
-                Ok(opts) => opts,
-                Err(e) => {
-                    return IpcResponse::error_with_code(
-                        request_id.to_string(),
-                        format!("invalid open dialog options: {e}"),
-                        IPC_HANDLER_ERROR_CODE.to_string(),
-                    );
-                }
-            };
-            let selected = dialog::show_open_dialog(&options)
-                .into_iter()
-                .next()
-                .map(|path| path.to_string_lossy().into_owned());
-            Ok(serde_json::json!(selected))
-        }
-        "show-save-dialog" => {
-            let options: dialog::SaveDialogOptions = match serde_json::from_value(args) {
-                Ok(opts) => opts,
-                Err(e) => {
-                    return IpcResponse::error_with_code(
-                        request_id.to_string(),
-                        format!("invalid save dialog options: {e}"),
-                        IPC_HANDLER_ERROR_CODE.to_string(),
-                    );
-                }
-            };
-            let selected =
-                dialog::show_save_dialog(&options).map(|p| p.to_string_lossy().into_owned());
-            Ok(serde_json::json!(selected))
-        }
-        "show-message-dialog" => {
-            let options: dialog::MessageDialogOptions = match serde_json::from_value(args) {
-                Ok(opts) => opts,
-                Err(e) => {
-                    return IpcResponse::error_with_code(
-                        request_id.to_string(),
-                        format!("invalid message dialog options: {e}"),
-                        IPC_HANDLER_ERROR_CODE.to_string(),
-                    );
-                }
-            };
-            let accepted = dialog::show_message_dialog(&options);
-            Ok(serde_json::json!(accepted))
-        }
-        "show-open-with-grant" => {
-            let mut options: dialog::OpenDialogOptions = match serde_json::from_value(args) {
-                Ok(opts) => opts,
-                Err(e) => {
-                    return IpcResponse::error_with_code(
-                        request_id.to_string(),
-                        format!("invalid open dialog options: {e}"),
-                        IPC_HANDLER_ERROR_CODE.to_string(),
-                    );
-                }
-            };
-            options.directory = true;
-            let selected = dialog::show_open_dialog(&options);
-            let mut paths = Vec::new();
-            let mut grant_ids = Vec::new();
-            for path in selected {
-                let path_str = path.to_string_lossy().into_owned();
-                match grant_store::create_grant(path) {
-                    Ok(grant_id) => {
-                        paths.push(serde_json::json!(path_str));
-                        grant_ids.push(serde_json::json!(grant_id));
-                    }
-                    Err(e) => {
-                        return IpcResponse::error_with_code(
-                            request_id.to_string(),
-                            format!("failed to create grant: {e}"),
-                            IPC_HANDLER_ERROR_CODE.to_string(),
-                        );
-                    }
-                }
-            }
-            Ok(serde_json::json!({ "paths": paths, "grantIds": grant_ids }))
-        }
-        _ => Err(format!("unknown dialog method: {method}")),
-    };
-
-    match result {
-        Ok(payload) => IpcResponse::success(request_id.to_string(), payload),
-        Err(error) => IpcResponse::error_with_code(
-            request_id.to_string(),
-            error,
-            IPC_HANDLER_ERROR_CODE.to_string(),
-        ),
-    }
 }
 
 #[cfg(test)]

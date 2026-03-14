@@ -4,74 +4,83 @@ use volt_core::grant_store;
 use volt_core::permissions::Permission;
 
 use super::{
-    native_function_module, promise_from_json_result, promise_from_result, require_permission,
-    value_to_json,
+    dialog_async, native_function_module, reject_promise, require_permission, value_to_json,
 };
 
 fn show_open(options: Option<JsValue>, context: &mut Context) -> JsValue {
-    let result = (|| {
-        require_permission(Permission::Dialog).map_err(super::format_js_error)?;
-        let options = options
-            .map(|value| value_to_json(value, context))
-            .transpose()?
-            .unwrap_or_else(|| serde_json::Value::Object(Default::default()));
-        let parsed: dialog::OpenDialogOptions = serde_json::from_value(options)
-            .map_err(|error| format!("invalid open dialog options: {error}"))?;
+    if let Err(e) = require_permission(Permission::Dialog) {
+        return reject_promise(context, super::format_js_error(e)).into();
+    }
 
+    let parsed = match parse_open_options(options, context) {
+        Ok(opts) => opts,
+        Err(message) => return reject_promise(context, message).into(),
+    };
+
+    dialog_async::spawn_dialog(context, move || {
         let selected = dialog::show_open_dialog(&parsed)
             .into_iter()
             .next()
             .map(|path| path.to_string_lossy().into_owned());
-        Ok(selected)
-    })();
-
-    promise_from_json_result(context, result.map(|selected| serde_json::json!(selected))).into()
+        Ok(serde_json::json!(selected))
+    })
+    .into()
 }
 
 fn show_save(options: Option<JsValue>, context: &mut Context) -> JsValue {
-    let result = (|| {
-        require_permission(Permission::Dialog).map_err(super::format_js_error)?;
-        let options = options
-            .map(|value| value_to_json(value, context))
-            .transpose()?
-            .unwrap_or_else(|| serde_json::Value::Object(Default::default()));
-        let parsed: dialog::SaveDialogOptions = serde_json::from_value(options)
-            .map_err(|error| format!("invalid save dialog options: {error}"))?;
+    if let Err(e) = require_permission(Permission::Dialog) {
+        return reject_promise(context, super::format_js_error(e)).into();
+    }
 
-        Ok(dialog::show_save_dialog(&parsed).map(|path| path.to_string_lossy().into_owned()))
-    })();
+    let parsed = match parse_save_options(options, context) {
+        Ok(opts) => opts,
+        Err(message) => return reject_promise(context, message).into(),
+    };
 
-    promise_from_json_result(context, result.map(|selected| serde_json::json!(selected))).into()
+    dialog_async::spawn_dialog(context, move || {
+        let selected =
+            dialog::show_save_dialog(&parsed).map(|path| path.to_string_lossy().into_owned());
+        Ok(serde_json::json!(selected))
+    })
+    .into()
 }
 
 fn show_message(options: JsValue, context: &mut Context) -> JsValue {
-    let result = (|| {
-        require_permission(Permission::Dialog).map_err(super::format_js_error)?;
-        let options = value_to_json(options, context)?;
-        let parsed: dialog::MessageDialogOptions = serde_json::from_value(options)
-            .map_err(|error| format!("invalid message dialog options: {error}"))?;
-        let accepted = dialog::show_message_dialog(&parsed);
-        Ok(if accepted { 1 } else { 0 })
-    })();
+    if let Err(e) = require_permission(Permission::Dialog) {
+        return reject_promise(context, super::format_js_error(e)).into();
+    }
 
-    promise_from_result(context, result).into()
+    let parsed: dialog::MessageDialogOptions =
+        match value_to_json(options, context).and_then(|json| {
+            serde_json::from_value(json)
+                .map_err(|error| format!("invalid message dialog options: {error}"))
+        }) {
+            Ok(opts) => opts,
+            Err(message) => return reject_promise(context, message).into(),
+        };
+
+    dialog_async::spawn_dialog(context, move || {
+        let accepted = dialog::show_message_dialog(&parsed);
+        Ok(serde_json::json!(if accepted { 1 } else { 0 }))
+    })
+    .into()
 }
 
 fn show_open_with_grant(options: Option<JsValue>, context: &mut Context) -> JsValue {
-    let result = (|| {
-        require_permission(Permission::Dialog).map_err(super::format_js_error)?;
-        require_permission(Permission::FileSystem).map_err(super::format_js_error)?;
+    if let Err(e) = require_permission(Permission::Dialog) {
+        return reject_promise(context, super::format_js_error(e)).into();
+    }
+    if let Err(e) = require_permission(Permission::FileSystem) {
+        return reject_promise(context, super::format_js_error(e)).into();
+    }
 
-        let options = options
-            .map(|value| value_to_json(value, context))
-            .transpose()?
-            .unwrap_or_else(|| serde_json::Value::Object(Default::default()));
-        let mut parsed: dialog::OpenDialogOptions = serde_json::from_value(options)
-            .map_err(|error| format!("invalid open dialog options: {error}"))?;
+    let mut parsed = match parse_open_options(options, context) {
+        Ok(opts) => opts,
+        Err(message) => return reject_promise(context, message).into(),
+    };
+    parsed.directory = true;
 
-        // Force directory mode for grant dialogs
-        parsed.directory = true;
-
+    dialog_async::spawn_dialog(context, move || {
         let selected = dialog::show_open_dialog(&parsed);
         let mut paths = Vec::new();
         let mut grant_ids = Vec::new();
@@ -88,9 +97,30 @@ fn show_open_with_grant(options: Option<JsValue>, context: &mut Context) -> JsVa
             "paths": paths,
             "grantIds": grant_ids,
         }))
-    })();
+    })
+    .into()
+}
 
-    promise_from_json_result(context, result).into()
+fn parse_open_options(
+    options: Option<JsValue>,
+    context: &mut Context,
+) -> Result<dialog::OpenDialogOptions, String> {
+    let json = options
+        .map(|value| value_to_json(value, context))
+        .transpose()?
+        .unwrap_or_else(|| serde_json::Value::Object(Default::default()));
+    serde_json::from_value(json).map_err(|error| format!("invalid open dialog options: {error}"))
+}
+
+fn parse_save_options(
+    options: Option<JsValue>,
+    context: &mut Context,
+) -> Result<dialog::SaveDialogOptions, String> {
+    let json = options
+        .map(|value| value_to_json(value, context))
+        .transpose()?
+        .unwrap_or_else(|| serde_json::Value::Object(Default::default()));
+    serde_json::from_value(json).map_err(|error| format!("invalid save dialog options: {error}"))
 }
 
 pub fn build_module(context: &mut Context) -> Module {

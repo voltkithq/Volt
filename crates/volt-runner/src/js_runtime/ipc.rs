@@ -230,10 +230,19 @@ async fn dispatch_ipc_handler(
     // job that must be drained before the next `await` can proceed.
     let mut iterations = 0;
     loop {
+        // Settle any completed async dialogs before running JS jobs,
+        // so their resolve/reject calls become available as new jobs.
+        crate::modules::dialog_async::settle_pending_dialogs(context);
         super::bootstrap::run_jobs(context, job_executor).await?;
         iterations += 1;
 
         match promise.state() {
+            PromiseState::Pending if crate::modules::dialog_async::has_pending_dialogs() => {
+                // A dialog is pending on another thread — yield briefly and
+                // retry rather than burning through the iteration budget.
+                std::thread::sleep(std::time::Duration::from_millis(10));
+                continue;
+            }
             PromiseState::Pending if iterations < MAX_JOB_ITERATIONS => continue,
             PromiseState::Pending => {
                 tracing::warn!(method = %method, "promise did not settle after {iterations} job iterations");

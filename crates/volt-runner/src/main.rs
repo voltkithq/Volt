@@ -58,7 +58,7 @@ fn run() -> Result<(), RunnerError> {
         .load_backend_bundle(&backend_bundle_source)
         .map_err(|err| RunnerError::App(format!("failed to load backend bundle: {err}")))?;
     let runtime_client = js_runtime.client();
-    let ipc_bridge = ipc_bridge::IpcBridge::new(runtime_client.clone(), &config.permissions);
+    let ipc_bridge = ipc_bridge::IpcBridge::new(runtime_client.clone());
 
     let mut app = App::new(AppConfig {
         name: config.app_name,

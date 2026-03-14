@@ -10,6 +10,7 @@ use boa_engine::object::builtins::JsPromise;
 use boa_engine::{Context, JsError, JsNativeError, JsResult, JsValue, js_string};
 use volt_core::permissions::{CapabilityGuard, Permission};
 
+pub(crate) mod dialog_async;
 mod event_helpers;
 pub mod secure_storage;
 #[cfg(test)]
