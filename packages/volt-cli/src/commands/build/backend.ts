@@ -44,6 +44,7 @@ export function buildRunnerConfigPayload(config: {
   window?: unknown;
   runtime?: unknown;
   updater?: unknown;
+  plugins?: unknown;
 }): Record<string, unknown> {
   const payload: Record<string, unknown> = {
     name: config.name,
@@ -63,6 +64,9 @@ export function buildRunnerConfigPayload(config: {
   }
   if (config.updater && typeof config.updater === 'object') {
     payload['updater'] = config.updater;
+  }
+  if (config.plugins && typeof config.plugins === 'object') {
+    payload['plugins'] = config.plugins;
   }
 
   const rawConfig = config as unknown as Record<string, unknown>;
