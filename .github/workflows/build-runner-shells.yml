@@ -1,8 +1,8 @@
 name: Build Pre-built Runner Binaries
 
+# Runner shells are built as part of the Release workflow (release.yml).
+# This workflow exists only for manual re-builds outside the release cycle.
 on:
-  release:
-    types: [published]
   workflow_dispatch:
     inputs:
       version:
