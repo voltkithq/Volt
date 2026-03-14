@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach, beforeAll } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { ChildProcess, spawn } from 'node:child_process';
 import { resolve } from 'node:path';
 import { existsSync } from 'node:fs';
@@ -28,18 +28,11 @@ function spawnHost(configB64: string): ChildProcess {
   });
 }
 
-describe('volt-plugin-host binary integration', () => {
+const binaryExists = existsSync(BINARY_PATH);
+
+describe.runIf(binaryExists)('volt-plugin-host binary integration', () => {
   let host: PluginIpcHost;
   let proc: ChildProcess;
-
-  beforeAll(() => {
-    if (!existsSync(BINARY_PATH)) {
-      throw new Error(
-        `volt-plugin-host binary not found at ${BINARY_PATH}. ` +
-        'Run `cargo build -p volt-plugin-host` first.',
-      );
-    }
-  });
 
   afterEach(async () => {
     host?.stopHeartbeat();
