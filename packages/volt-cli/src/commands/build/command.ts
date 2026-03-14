@@ -18,6 +18,7 @@ import { runBuildPreflight, enforcePreflightResult } from '../../utils/preflight
 import { convertPngToIco } from '../../utils/icon-converter.js';
 import { resolvePrebuiltRunner } from '../../utils/prebuilt-runner.js';
 import { patchRunnerBinary } from '../../utils/binary-patcher.js';
+import { patchExeIcon } from '../../utils/pe-icon-patcher.js';
 
 export interface BuildOptions {
   target?: string;
@@ -187,9 +188,10 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
     platform: buildPlatform,
     arch: process.arch,
     cacheDir: prebuiltCacheDir,
+    devtools: config.devtools,
   });
 
-  if (prebuiltRunner && !config.devtools) {
+  if (prebuiltRunner) {
     // Patch the pre-built shell binary with real app data — no Rust compilation needed.
     console.log('[volt] Using pre-built runner shell (no Cargo compilation required).');
     const ext = buildPlatform === 'win32' ? '.exe' : '';
@@ -220,6 +222,26 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
       rustTarget: options.target ?? null,
     });
     console.log(`[volt] Runtime artifact copied to ${destBinary}`);
+
+    // Patch the exe icon for pre-built runners on Windows
+    if (buildPlatform === 'win32') {
+      const windowConfig = config.window as Record<string, unknown> | undefined;
+      const iconField = windowConfig?.icon;
+      if (typeof iconField === 'string' && iconField.trim()) {
+        const resolvedIcon = resolve(cwd, iconField);
+        if (existsSync(resolvedIcon)) {
+          let icoPath = resolvedIcon;
+          if (resolvedIcon.endsWith('.png')) {
+            try {
+              icoPath = convertPngToIco(resolvedIcon, tempBundleDir!);
+            } catch { /* use PNG path as fallback */ }
+          }
+          if (patchExeIcon(destBinary, icoPath, config.name, config.version ?? '0.1.0')) {
+            console.log(`[volt] App icon embedded into exe: ${iconField}`);
+          }
+        }
+      }
+    }
   } else {
     // ── Cargo compilation path ──────────────────────────────────────────
     console.log('[volt] Compiling native binary...');

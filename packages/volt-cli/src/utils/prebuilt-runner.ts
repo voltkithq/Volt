@@ -32,6 +32,7 @@ export async function resolvePrebuiltRunner(options: {
   platform: string;
   arch: string;
   cacheDir: string;
+  devtools?: boolean;
 }): Promise<string | null> {
   const version = getVoltCliVersion();
   if (version === '0.0.0') return null;
@@ -40,14 +41,15 @@ export async function resolvePrebuiltRunner(options: {
   if (!target) return null;
 
   const ext = options.platform === 'win32' ? '.exe' : '';
-  const fileName = `volt-runner-${version}-${target}${ext}`;
+  const suffix = options.devtools ? '-devtools' : '';
+  const fileName = `volt-runner${suffix}-${version}-${target}${ext}`;
   const cachedPath = resolve(options.cacheDir, fileName);
 
   if (existsSync(cachedPath)) {
     return cachedPath;
   }
 
-  const downloadUrl = buildDownloadUrl(version, target, ext);
+  const downloadUrl = buildDownloadUrl(version, target, ext, suffix);
   if (!downloadUrl) return null;
 
   try {
@@ -99,8 +101,8 @@ function resolveRustTarget(platform: string, arch: string): string | null {
   return targets[platform]?.[arch] ?? null;
 }
 
-function buildDownloadUrl(version: string, target: string, ext: string): string {
-  return `https://github.com/voltkithq/Volt/releases/download/v${version}/volt-runner-${target}${ext}`;
+function buildDownloadUrl(version: string, target: string, ext: string, suffix: string = ''): string {
+  return `https://github.com/voltkithq/Volt/releases/download/v${version}/volt-runner${suffix}-${target}${ext}`;
 }
 
 function buildChecksumUrl(version: string): string {
