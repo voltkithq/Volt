@@ -11,7 +11,7 @@ mod eval_ops;
 mod ipc;
 mod native_events;
 mod requests;
-mod serde_support;
+pub(crate) mod serde_support;
 #[cfg(test)]
 mod tests;
 mod worker;

@@ -349,12 +349,14 @@ fn dispatch_ipc_task(
         .dispatch_ipc_message(raw, timeout)
         .unwrap_or_else(|error| {
             if error.contains("timed out after") {
+                let method = crate::js_runtime::serde_support::extract_ipc_method(raw);
                 IpcResponse::error_with_details(
                     request_id.to_string(),
                     format!("IPC bridge failure: {error}"),
                     IPC_HANDLER_TIMEOUT_CODE.to_string(),
                     serde_json::json!({
-                        "timeoutMs": timeout.as_millis()
+                        "timeoutMs": timeout.as_millis(),
+                        "method": method
                     }),
                 )
             } else {
