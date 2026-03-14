@@ -9,7 +9,7 @@ name = "volt-plugin-host"
 path = "src/main.rs"
 
 [dependencies]
-volt-core = { path = "../volt-core", default-features = false }
+volt-permissions = { path = "../volt-permissions" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 boa_engine = { version = "0.21", features = ["intl_bundled"] }

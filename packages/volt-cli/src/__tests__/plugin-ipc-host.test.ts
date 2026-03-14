@@ -1,10 +1,10 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { ChildProcess, spawn } from 'node:child_process';
-import { resolve } from 'node:path';
 import {
   PluginIpcHost,
   frameMessage,
   tryParseFrame,
+  STREAM_METHODS,
   type IpcMessage,
 } from '../utils/plugin-ipc-host.js';
 
@@ -71,8 +71,75 @@ process.stdin.on('data', (chunk) => {
 process.stdin.on('end', () => process.exit(0));
 `;
 
+const SLOW_ECHO_SCRIPT = `
+const { Buffer } = require('buffer');
+
+function writeFrame(msg) {
+  const json = JSON.stringify(msg);
+  const body = Buffer.from(json + '\\n', 'utf-8');
+  const header = Buffer.alloc(4);
+  header.writeUInt32LE(body.length, 0);
+  process.stdout.write(Buffer.concat([header, body]));
+}
+
+// Send ready signal
+writeFrame({
+  type: 'signal',
+  id: 'init',
+  method: 'ready',
+  payload: null,
+  error: null,
+});
+
+let buf = Buffer.alloc(0);
+process.stdin.on('data', (chunk) => {
+  buf = Buffer.concat([buf, chunk]);
+  while (buf.length >= 4) {
+    const len = buf.readUInt32LE(0);
+    if (buf.length < 4 + len) break;
+    const raw = buf.subarray(4, 4 + len).toString('utf-8');
+    const stripped = raw.endsWith('\\n') ? raw.slice(0, -1) : raw;
+    const msg = JSON.parse(stripped);
+    buf = buf.subarray(4 + len);
+
+    if (msg.type === 'signal' && msg.method === 'heartbeat') {
+      writeFrame({
+        type: 'signal',
+        id: msg.id,
+        method: 'heartbeat-ack',
+        payload: null,
+        error: null,
+      });
+    } else if (msg.type === 'signal' && msg.method === 'deactivate') {
+      process.exit(0);
+    } else if (msg.type === 'signal' && msg.method === 'cancel') {
+      // ignore cancel signals
+    } else if (msg.type === 'request') {
+      // Delay response by 500ms
+      setTimeout(() => {
+        writeFrame({
+          type: 'response',
+          id: msg.id,
+          method: msg.method,
+          payload: msg.payload,
+          error: null,
+        });
+      }, 500);
+    }
+  }
+});
+
+process.stdin.on('end', () => process.exit(0));
+`;
+
 function spawnEcho(): ChildProcess {
   return spawn(process.execPath, ['-e', ECHO_SCRIPT], {
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+}
+
+function spawnSlowEcho(): ChildProcess {
+  return spawn(process.execPath, ['-e', SLOW_ECHO_SCRIPT], {
     stdio: ['pipe', 'pipe', 'pipe'],
   });
 }
@@ -124,11 +191,11 @@ describe('frameMessage / tryParseFrame', () => {
 
     const first = tryParseFrame(combined, 0);
     expect(first).not.toBeNull();
-    expect(first!.message.id).toBe('1');
+    expect(first!.message!.id).toBe('1');
 
     const second = tryParseFrame(combined, first!.bytesConsumed);
     expect(second).not.toBeNull();
-    expect(second!.message.id).toBe('2');
+    expect(second!.message!.id).toBe('2');
   });
 
   it('rejects zero-length frame', () => {
@@ -141,6 +208,40 @@ describe('frameMessage / tryParseFrame', () => {
     const buf = Buffer.alloc(4);
     buf.writeUInt32LE(17 * 1024 * 1024, 0);
     expect(tryParseFrame(buf, 0)).toBeNull();
+  });
+
+  it('returns null message for invalid JSON', () => {
+    // Create a frame with invalid JSON content
+    const badJson = Buffer.from('not valid json!\n', 'utf-8');
+    const header = Buffer.alloc(4);
+    header.writeUInt32LE(badJson.length, 0);
+    const frame = Buffer.concat([header, badJson]);
+    const parsed = tryParseFrame(frame, 0);
+    expect(parsed).not.toBeNull();
+    expect(parsed!.message).toBeNull();
+    expect(parsed!.bytesConsumed).toBe(4 + badJson.length);
+  });
+
+  it('returns null message for partial JSON', () => {
+    const partialJson = Buffer.from('{"type":"req\n', 'utf-8');
+    const header = Buffer.alloc(4);
+    header.writeUInt32LE(partialJson.length, 0);
+    const frame = Buffer.concat([header, partialJson]);
+    const parsed = tryParseFrame(frame, 0);
+    expect(parsed).not.toBeNull();
+    expect(parsed!.message).toBeNull();
+    expect(parsed!.bytesConsumed).toBe(4 + partialJson.length);
+  });
+});
+
+describe('STREAM_METHODS', () => {
+  it('has all required stream method constants', () => {
+    expect(STREAM_METHODS.START).toBe('stream:start');
+    expect(STREAM_METHODS.CHUNK).toBe('stream:chunk');
+    expect(STREAM_METHODS.END).toBe('stream:end');
+    expect(STREAM_METHODS.ERROR).toBe('stream:error');
+    expect(STREAM_METHODS.PAUSE).toBe('stream:pause');
+    expect(STREAM_METHODS.RESUME).toBe('stream:resume');
   });
 });
 
@@ -317,17 +418,20 @@ describe('PluginIpcHost with echo process', () => {
     expect(results[3].status).toBe('fulfilled');
   });
 
-  it('cancellation signal can be sent for a pending request', async () => {
-    host = new PluginIpcHost();
-    proc = spawnEcho();
+  it('cancellation signal can be sent during a pending slow request', async () => {
+    host = new PluginIpcHost({ callTimeoutMs: 5000 });
+    proc = spawnSlowEcho();
     host.attach(proc);
     await host.waitForReady(5000);
 
-    // The echo process doesn't handle cancellation specially — it echoes the request anyway.
-    // This just tests that cancel() sends a signal without error.
+    // Send a request that will take 500ms to respond
     const responsePromise = host.request('long.operation');
-    host.cancel((await responsePromise).id);
-    // If we get here without throwing, cancel didn't break anything.
+    // Send cancel while the request is still pending
+    host.cancel('some-request-id');
+    // The slow echo still responds after 500ms, so the request should resolve
+    const response = await responsePromise;
+    expect(response.type).toBe('response');
+    expect(response.method).toBe('long.operation');
   });
 
   it('captures stderr output', async () => {
@@ -378,5 +482,24 @@ describe('PluginIpcHost with echo process', () => {
     await Promise.all([p1, p2]);
     expect(host.inflightCount).toBe(0);
     expect(host.queueLength).toBe(0);
+  });
+
+  it('waitForReady cleans up listener on timeout', async () => {
+    host = new PluginIpcHost();
+    // Spawn a process that never sends ready
+    const neverReadyScript = `
+      process.stdin.on('data', () => {});
+      process.stdin.on('end', () => process.exit(0));
+    `;
+    proc = spawn(process.execPath, ['-e', neverReadyScript], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    host.attach(proc);
+
+    const listenerCountBefore = host.listenerCount('message');
+    await expect(host.waitForReady(100)).rejects.toThrow(/ready signal/);
+    // Listener should be cleaned up after timeout
+    const listenerCountAfter = host.listenerCount('message');
+    expect(listenerCountAfter).toBe(listenerCountBefore);
   });
 });

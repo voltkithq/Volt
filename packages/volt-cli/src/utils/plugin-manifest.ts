@@ -30,6 +30,11 @@ export interface PluginContributes {
   commands?: PluginContributedCommand[];
 }
 
+export interface PluginSignature {
+  algorithm: string;
+  value: string;
+}
+
 export interface PluginManifest {
   id: string;
   name: string;
@@ -41,6 +46,7 @@ export interface PluginManifest {
   backend: string;
   capabilities: KnownCapability[];
   contributes?: PluginContributes;
+  signature?: PluginSignature;
 }
 
 export interface ManifestValidationError {
@@ -197,6 +203,26 @@ export function validatePluginManifest(input: unknown): ManifestValidationResult
             }
           }
         }
+      }
+    }
+  }
+
+  // signature (optional)
+  if (input.signature !== undefined) {
+    if (!isPlainObject(input.signature)) {
+      errors.push({ field: 'signature', message: 'Must be an object if present' });
+    } else {
+      if (typeof input.signature.algorithm !== 'string' || input.signature.algorithm.length === 0) {
+        errors.push({
+          field: 'signature.algorithm',
+          message: 'Must be a non-empty string',
+        });
+      }
+      if (typeof input.signature.value !== 'string' || input.signature.value.length === 0) {
+        errors.push({
+          field: 'signature.value',
+          message: 'Must be a non-empty string',
+        });
       }
     }
   }
