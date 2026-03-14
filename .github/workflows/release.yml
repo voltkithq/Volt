@@ -166,16 +166,20 @@ jobs:
         if: matrix.target == 'aarch64-unknown-linux-gnu'
         run: |
           sudo dpkg --add-architecture arm64
-          # Pin existing sources to amd64 only (skip files that already have arch annotations)
-          for f in /etc/apt/sources.list.d/*.list; do
-            if grep -q '^\s*deb\s\+\[' "$f" 2>/dev/null; then
-              continue
-            fi
-            sudo sed -i 's/^\s*deb /deb [arch=amd64] /' "$f" 2>/dev/null || true
+          # Pin ALL apt sources to amd64 — security.ubuntu.com doesn't host arm64
+          sudo sed -i 's/^deb http/deb [arch=amd64] http/' /etc/apt/sources.list 2>/dev/null || true
+          for f in /etc/apt/sources.list.d/*.sources /etc/apt/sources.list.d/*.list; do
+            [ -f "$f" ] || continue
+            sudo sed -i '/^Architectures:/d' "$f" 2>/dev/null || true
+            sudo sed -i 's/^Types: deb$/Types: deb\nArchitectures: amd64/' "$f" 2>/dev/null || true
+            sudo sed -i 's/^deb http/deb [arch=amd64] http/' "$f" 2>/dev/null || true
           done
-          # Add arm64 sources from Ubuntu ports
-          echo "deb [arch=arm64] http://ports.ubuntu.com/ $(lsb_release -cs) main restricted universe multiverse" | sudo tee /etc/apt/sources.list.d/arm64.list
-          echo "deb [arch=arm64] http://ports.ubuntu.com/ $(lsb_release -cs)-updates main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list.d/arm64.list
+          # arm64 packages only come from ports.ubuntu.com
+          cat <<'SOURCES' | sudo tee /etc/apt/sources.list.d/arm64-ports.list
+          deb [arch=arm64] http://ports.ubuntu.com/ noble main restricted universe multiverse
+          deb [arch=arm64] http://ports.ubuntu.com/ noble-updates main restricted universe multiverse
+          deb [arch=arm64] http://ports.ubuntu.com/ noble-security main restricted universe multiverse
+          SOURCES
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu libglib2.0-dev:arm64 libwebkit2gtk-4.1-dev:arm64 libgtk-3-dev:arm64 libayatana-appindicator3-dev:arm64 librsvg2-dev:arm64 libxdo-dev:arm64
 
