@@ -16,7 +16,7 @@ export interface VoltConfig {
   package?: PackageConfig;
   /** Auto-updater configuration. */
   updater?: UpdaterConfig;
-  /** QuickJS runtime pool configuration for production builds. */
+  /** Boa runtime pool configuration for production builds. */
   runtime?: RuntimeConfig;
   /** Legacy alias for runtime.poolSize. Prefer using runtime.poolSize. */
   runtimePoolSize?: number;
@@ -82,7 +82,7 @@ export interface BuildConfig {
 
 /** Runtime execution configuration. */
 export interface RuntimeConfig {
-  /** Number of QuickJS runtimes in the IPC pool. Clamped to [2, 4] by the runner. */
+  /** Number of Boa runtimes in the IPC pool. Clamped to [2, 4] by the runner. */
   poolSize?: number;
 }
 

@@ -184,6 +184,9 @@ export declare function notificationShow(options: any): void
  */
 export declare function shellOpenExternal(url: string): void
 
+/** Reveal a file or directory in the platform file manager. */
+export declare function shellShowItemInFolder(path: string): void
+
 /** Apply a downloaded update by replacing the current binary. */
 export declare function updaterApply(data: Buffer): void
 

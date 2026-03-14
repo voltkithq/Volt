@@ -157,6 +157,7 @@ export const fsWatchClose = vi.fn((_watcherId: string) => {});
 // ── Shell ──────────────────────────────────────────────────────────────
 
 export const shellOpenExternal = vi.fn((_url: string) => {});
+export const shellShowItemInFolder = vi.fn((_path: string) => {});
 
 // ── Notification ───────────────────────────────────────────────────────
 

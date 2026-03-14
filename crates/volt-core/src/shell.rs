@@ -59,6 +59,47 @@ pub fn open_external(url_str: &str) -> Result<(), ShellError> {
     Ok(())
 }
 
+/// Reveal a file or directory in the platform file manager.
+/// The path must be an absolute, canonicalized path that has already been validated
+/// against the app's filesystem scope.
+pub fn show_item_in_folder(path: &std::path::Path) -> Result<(), ShellError> {
+    if !path.exists() {
+        return Err(ShellError::OpenFailed(format!(
+            "path does not exist: '{}'",
+            path.display()
+        )));
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg("/select,")
+            .arg(path)
+            .spawn()
+            .map_err(|e| ShellError::OpenFailed(e.to_string()))?;
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg("-R")
+            .arg(path)
+            .spawn()
+            .map_err(|e| ShellError::OpenFailed(e.to_string()))?;
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let folder = path.parent().unwrap_or(path);
+        std::process::Command::new("xdg-open")
+            .arg(folder)
+            .spawn()
+            .map_err(|e| ShellError::OpenFailed(e.to_string()))?;
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

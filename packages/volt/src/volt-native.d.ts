@@ -138,6 +138,9 @@ declare module '@voltkit/volt-native' {
   /** Open a URL in the default system application. */
   export function shellOpenExternal(url: string): void;
 
+  /** Reveal a file or directory in the platform file manager. */
+  export function shellShowItemInFolder(path: string): void;
+
   // ── Notification ───────────────────────────────────────────────────────
 
   export interface NativeNotificationOptions {

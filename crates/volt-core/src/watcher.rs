@@ -75,7 +75,7 @@ pub fn start_watch(root: PathBuf, recursive: bool, debounce_ms: u64) -> Result<S
         return Err("watch target must be a directory".to_string());
     }
 
-    let (tx, rx) = crossbeam_channel::unbounded::<WatchEvent>();
+    let (tx, rx) = crossbeam_channel::bounded::<WatchEvent>(4096);
     let root_for_handler = canonical_root.clone();
 
     let debounce_duration = Duration::from_millis(debounce_ms.max(50));

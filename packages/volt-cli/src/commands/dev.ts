@@ -151,6 +151,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
     version: config.version,
     devtools: config.devtools ?? true,
     window: config.window,
+    permissions: config.permissions,
   });
 
   console.log('[volt] Creating native window...');

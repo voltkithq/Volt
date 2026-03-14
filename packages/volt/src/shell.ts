@@ -4,7 +4,7 @@
  * Requires `permissions: ['shell']` in volt.config.ts.
  */
 
-import { shellOpenExternal } from '@voltkit/volt-native';
+import { shellOpenExternal, shellShowItemInFolder } from '@voltkit/volt-native';
 
 /**
  * Open a URL in the default system application.
@@ -35,7 +35,21 @@ async function openExternal(url: string): Promise<void> {
   shellOpenExternal(url);
 }
 
+/**
+ * Reveal a file or directory in the platform file manager.
+ * Opens Explorer (Windows), Finder (macOS), or the default file manager (Linux).
+ *
+ * @example
+ * ```ts
+ * shell.showItemInFolder('/path/to/file.txt');
+ * ```
+ */
+function showItemInFolder(path: string): void {
+  shellShowItemInFolder(path);
+}
+
 /** Shell APIs. Requires `permissions: ['shell']` in volt.config.ts. */
 export const shell = {
   openExternal,
+  showItemInFolder,
 };

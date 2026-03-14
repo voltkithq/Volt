@@ -1,6 +1,6 @@
 use napi::bindgen_prelude::Buffer;
 use napi_derive::napi;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use volt_core::fs;
 use volt_core::grant_store;
 use volt_core::permissions::Permission;
@@ -140,10 +140,12 @@ pub fn fs_watch_start(
     debounce_ms: f64,
 ) -> napi::Result<String> {
     require_permission(Permission::FileSystem)?;
+    let base = Path::new(&base_dir);
     let target = if subpath.is_empty() {
-        PathBuf::from(&base_dir)
+        base.to_path_buf()
     } else {
-        PathBuf::from(&base_dir).join(&subpath)
+        fs::safe_resolve(base, &subpath)
+            .map_err(|e| napi::Error::from_reason(format!("fs watch scope error: {e}")))?
     };
     watcher::start_watch(target, recursive, debounce_ms as u64)
         .map_err(|e| napi::Error::from_reason(format!("fs watch failed: {e}")))

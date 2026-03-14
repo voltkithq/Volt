@@ -605,6 +605,7 @@ module.exports.fsWatchStart = nativeBinding.fsWatchStart
 module.exports.fsWriteFile = nativeBinding.fsWriteFile
 module.exports.notificationShow = nativeBinding.notificationShow
 module.exports.shellOpenExternal = nativeBinding.shellOpenExternal
+module.exports.shellShowItemInFolder = nativeBinding.shellShowItemInFolder
 module.exports.updaterApply = nativeBinding.updaterApply
 module.exports.updaterCheck = nativeBinding.updaterCheck
 module.exports.updaterDownloadAndVerify = nativeBinding.updaterDownloadAndVerify
