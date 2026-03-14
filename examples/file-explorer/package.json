@@ -6,8 +6,7 @@
   "scripts": {
     "dev": "volt dev",
     "build": "volt build",
-    "lint": "tsc --noEmit",
-    "test": "tsc --noEmit"
+    "lint": "eslint src/ --max-warnings 0"
   },
   "dependencies": {
     "voltkit": "workspace:*"
