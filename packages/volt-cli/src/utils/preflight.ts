@@ -117,49 +117,45 @@ export function runPackagePreflight(
     });
   }
 
-  // Platform-specific tool checks
+  // Platform-specific tool checks — these are warnings, not errors.
+  // The packager handles missing tools gracefully (skips that format and reports at the end).
   const formats = resolveFormats(platform, options.format);
 
   if (platform === 'win32') {
     if (formats.includes('nsis') && !isToolAvailable('makensis')) {
-      errors.push({
+      warnings.push({
         id: 'package.nsis',
-        message: '`makensis` not found on PATH.',
-        fix: 'Install NSIS: choco install nsis (Windows) or download from https://nsis.sourceforge.io',
+        message: '`makensis` not found on PATH. NSIS installer will be skipped. Install: choco install nsis',
       });
     }
     if (formats.includes('msix') && !isToolAvailable('makemsix') && !isToolAvailable('makeappx')) {
-      errors.push({
+      warnings.push({
         id: 'package.msix',
-        message: '`makemsix` or `makeappx` not found on PATH.',
-        fix: 'Install Windows SDK for MSIX packaging tools.',
+        message: '`makemsix`/`makeappx` not found. MSIX package will be skipped. Install Windows SDK.',
       });
     }
   }
 
   if (platform === 'darwin') {
     if (formats.includes('dmg') && !isToolAvailable('hdiutil')) {
-      errors.push({
+      warnings.push({
         id: 'package.dmg',
-        message: '`hdiutil` not found.',
-        fix: 'hdiutil is included with macOS — this check should only fail on non-macOS systems.',
+        message: '`hdiutil` not found. DMG creation will be skipped.',
       });
     }
   }
 
   if (platform === 'linux') {
     if (formats.includes('appimage') && !isToolAvailable('appimagetool')) {
-      errors.push({
+      warnings.push({
         id: 'package.appimage',
-        message: '`appimagetool` not found on PATH.',
-        fix: 'Download from https://github.com/AppImage/appimagetool/releases',
+        message: '`appimagetool` not found. AppImage will be skipped. Download from https://github.com/AppImage/appimagetool/releases',
       });
     }
     if (formats.includes('deb') && !isToolAvailable('dpkg-deb')) {
-      errors.push({
+      warnings.push({
         id: 'package.deb',
-        message: '`dpkg-deb` not found on PATH.',
-        fix: 'Install dpkg: apt install dpkg',
+        message: '`dpkg-deb` not found. .deb package will be skipped. Install: apt install dpkg',
       });
     }
   }

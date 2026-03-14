@@ -38,10 +38,9 @@ pub(crate) fn load_runner_config() -> Result<RunnerConfig, RunnerError> {
     // 1. Env var override (dev/testing)
     // 2. Sidecar file alongside the exe (pre-built runner)
     // 3. Embedded bytes (compiled-in)
-    let config_bytes = if let Some(bytes) = read_override_bytes_from_env_keys(&[
-        ENV_RUNNER_CONFIG_PATH,
-        ENV_RUNNER_CONFIG_LEGACY,
-    ])? {
+    let config_bytes = if let Some(bytes) =
+        read_override_bytes_from_env_keys(&[ENV_RUNNER_CONFIG_PATH, ENV_RUNNER_CONFIG_LEGACY])?
+    {
         bytes
     } else if let Some(bytes) = read_sidecar_config() {
         bytes
@@ -58,9 +57,7 @@ pub(crate) fn load_runner_config() -> Result<RunnerConfig, RunnerError> {
 /// If the embedded config starts with a sentinel marker, extract the actual payload.
 fn unwrap_sentinel_config(bytes: &[u8]) -> &[u8] {
     if bytes.len() >= 36 && bytes[..32] == SENTINEL_RUNNER_CONFIG[..] {
-        let actual_len = u32::from_le_bytes(
-            bytes[32..36].try_into().unwrap_or([0; 4]),
-        ) as usize;
+        let actual_len = u32::from_le_bytes(bytes[32..36].try_into().unwrap_or([0; 4])) as usize;
         if actual_len == 0 {
             return &[];
         }

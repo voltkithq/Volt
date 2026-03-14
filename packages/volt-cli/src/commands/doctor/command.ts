@@ -90,6 +90,16 @@ export async function doctorCommand(options: DoctorOptions): Promise<void> {
       });
     }
   }
+  for (const warning of [...buildPreflight.warnings, ...packagePreflight.warnings]) {
+    if (!checks.some((c) => c.id === warning.id)) {
+      checks.push({
+        id: warning.id,
+        status: 'warn',
+        title: warning.message,
+        details: '',
+      });
+    }
+  }
   const report: DoctorReport = {
     target: platform,
     formats,

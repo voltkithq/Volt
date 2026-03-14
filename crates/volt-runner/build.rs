@@ -46,12 +46,24 @@ fn main() {
 
     if cfg!(feature = "prebuilt-shell") {
         // Generate sentinel-marked placeholder slots for binary patching.
-        write_sentinel_placeholder(&out_dir.join(OUT_ASSET_BUNDLE), SENTINEL_ASSET_BUNDLE, SHELL_MAX_ASSET_BUNDLE)
-            .unwrap_or_else(|e| panic!("failed to write asset bundle placeholder: {e}"));
-        write_sentinel_placeholder(&out_dir.join(OUT_BACKEND_BUNDLE), SENTINEL_BACKEND_BUNDLE, SHELL_MAX_BACKEND_BUNDLE)
-            .unwrap_or_else(|e| panic!("failed to write backend bundle placeholder: {e}"));
-        write_sentinel_placeholder(&out_dir.join(OUT_RUNNER_CONFIG), SENTINEL_RUNNER_CONFIG, SHELL_MAX_RUNNER_CONFIG)
-            .unwrap_or_else(|e| panic!("failed to write runner config placeholder: {e}"));
+        write_sentinel_placeholder(
+            &out_dir.join(OUT_ASSET_BUNDLE),
+            SENTINEL_ASSET_BUNDLE,
+            SHELL_MAX_ASSET_BUNDLE,
+        )
+        .unwrap_or_else(|e| panic!("failed to write asset bundle placeholder: {e}"));
+        write_sentinel_placeholder(
+            &out_dir.join(OUT_BACKEND_BUNDLE),
+            SENTINEL_BACKEND_BUNDLE,
+            SHELL_MAX_BACKEND_BUNDLE,
+        )
+        .unwrap_or_else(|e| panic!("failed to write backend bundle placeholder: {e}"));
+        write_sentinel_placeholder(
+            &out_dir.join(OUT_RUNNER_CONFIG),
+            SENTINEL_RUNNER_CONFIG,
+            SHELL_MAX_RUNNER_CONFIG,
+        )
+        .unwrap_or_else(|e| panic!("failed to write runner config placeholder: {e}"));
     } else {
         embed_artifact(
             ENV_ASSET_BUNDLE,
@@ -86,7 +98,9 @@ fn embed_windows_resource() {
     let mut res = winresource::WindowsResource::new();
 
     if let Ok(icon_path) = env::var(ENV_APP_ICON) {
-        let icon = strip_surrounding_quotes(icon_path.trim()).trim().to_string();
+        let icon = strip_surrounding_quotes(icon_path.trim())
+            .trim()
+            .to_string();
         if !icon.is_empty() && Path::new(&icon).exists() {
             println!("cargo:rerun-if-changed={icon}");
             res.set_icon(&icon);
@@ -182,13 +196,20 @@ fn strip_surrounding_quotes(input: &str) -> &str {
 /// Write a sentinel-marked placeholder file for binary patching.
 /// Layout: [32-byte sentinel] [4-byte LE actual_length = 0] [zero-padding to max_size]
 /// Total file size: 32 + 4 + max_size
-fn write_sentinel_placeholder(out_path: &Path, sentinel: &[u8; 32], max_size: usize) -> Result<(), String> {
+fn write_sentinel_placeholder(
+    out_path: &Path,
+    sentinel: &[u8; 32],
+    max_size: usize,
+) -> Result<(), String> {
     let total = 32 + 4 + max_size;
     let mut data = vec![0u8; total];
     data[..32].copy_from_slice(sentinel);
     // actual_length = 0 (LE u32) at bytes 32..36 — already zero
     fs::write(out_path, &data).map_err(|e| {
-        format!("failed to write sentinel placeholder to '{}': {e}", out_path.display())
+        format!(
+            "failed to write sentinel placeholder to '{}': {e}",
+            out_path.display()
+        )
     })
 }
 

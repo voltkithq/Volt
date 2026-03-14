@@ -58,10 +58,7 @@ pub(crate) fn load_backend_bundle_source() -> Result<String, RunnerError> {
     }
     // 3. Embedded bytes (compiled-in or patched shell)
     let bytes = unwrap_sentinel_data(EMBEDDED_BACKEND_BUNDLE_BYTES, SENTINEL_BACKEND_BUNDLE);
-    decode_backend_bundle_bytes(
-        bytes,
-        "embedded backend bundle".to_string(),
-    )
+    decode_backend_bundle_bytes(bytes, "embedded backend bundle".to_string())
 }
 
 /// Try to read a sidecar file located alongside the current executable.
@@ -84,9 +81,7 @@ fn exe_directory() -> Option<PathBuf> {
 /// If no sentinel is detected, return the bytes as-is (normal compiled-in build).
 fn unwrap_sentinel_data<'a>(bytes: &'a [u8], sentinel: &[u8; 32]) -> &'a [u8] {
     if bytes.len() >= 36 && bytes[..32] == sentinel[..] {
-        let actual_len = u32::from_le_bytes(
-            bytes[32..36].try_into().unwrap_or([0; 4]),
-        ) as usize;
+        let actual_len = u32::from_le_bytes(bytes[32..36].try_into().unwrap_or([0; 4])) as usize;
         if actual_len == 0 {
             // Unpatched shell — no data was injected
             return &[];
