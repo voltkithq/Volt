@@ -56,13 +56,7 @@ fn oversized_payload_is_rejected_before_it_consumes_in_flight_capacity() {
 
     bridge.handle_message("window-oversized".to_string(), oversized);
 
-    let in_flight = bridge
-        .in_flight_by_window
-        .lock()
-        .expect("in-flight map")
-        .get("window-oversized")
-        .copied()
-        .unwrap_or(0);
+    let in_flight = bridge.in_flight_for("window-oversized");
     assert_eq!(in_flight, 0);
 }
 
