@@ -112,6 +112,10 @@ export interface PluginLimitsConfig {
   callTimeoutMs?: number;
   /** Maximum number of enabled plugins. */
   maxPlugins?: number;
+  /** Interval between plugin heartbeat probes. */
+  heartbeatIntervalMs?: number;
+  /** Maximum time to wait for each heartbeat acknowledgement. */
+  heartbeatTimeoutMs?: number;
 }
 
 /** Supported plugin spawn strategies. */

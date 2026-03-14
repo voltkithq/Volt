@@ -101,6 +101,8 @@ describe('config validation (via loadConfig internals)', () => {
           deactivationTimeoutMs: 5_000,
           callTimeoutMs: 30_000,
           maxPlugins: 32,
+          heartbeatIntervalMs: 1_500,
+          heartbeatTimeoutMs: 900,
         },
         spawning: {
           strategy: 'lazy',
@@ -220,6 +222,8 @@ describe('config validation (via loadConfig internals)', () => {
             deactivationTimeoutMs: 5_000,
             callTimeoutMs: 30_000,
             maxPlugins: 32,
+            heartbeatIntervalMs: 1_500,
+            heartbeatTimeoutMs: 900,
           },
           spawning: {
             strategy: 'lazy',
@@ -244,6 +248,8 @@ describe('config validation (via loadConfig internals)', () => {
         deactivationTimeoutMs: 5_000,
         callTimeoutMs: 30_000,
         maxPlugins: 32,
+        heartbeatIntervalMs: 1_500,
+        heartbeatTimeoutMs: 900,
       },
       spawning: {
         strategy: 'lazy',
@@ -267,6 +273,7 @@ describe('config validation (via loadConfig internals)', () => {
           limits: {
             activationTimeoutMs: 0,
             deactivationTimeoutMs: 5_000,
+            heartbeatIntervalMs: 0,
           },
           spawning: {
             strategy: 'sometimes',
@@ -300,6 +307,9 @@ describe('config validation (via loadConfig internals)', () => {
     );
     expect(errorSpy).toHaveBeenCalledWith(
       expect.stringContaining("'plugins.spawning.strategy' must be \"lazy\" or \"eager\"."),
+    );
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("'plugins.limits.heartbeatIntervalMs' must be a positive integer."),
     );
     errorSpy.mockRestore();
   });

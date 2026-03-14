@@ -237,6 +237,20 @@ export function validateConfig(config: VoltConfig, filename: string, options: Lo
             filename,
             errors,
           );
+          validatePositiveIntegerField(
+            limits,
+            'heartbeatIntervalMs',
+            'plugins.limits.heartbeatIntervalMs',
+            filename,
+            errors,
+          );
+          validatePositiveIntegerField(
+            limits,
+            'heartbeatTimeoutMs',
+            'plugins.limits.heartbeatTimeoutMs',
+            filename,
+            errors,
+          );
         }
       }
 

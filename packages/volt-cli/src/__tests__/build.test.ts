@@ -257,6 +257,8 @@ describe('build runtime artifact resolution helpers', () => {
           deactivationTimeoutMs: 5_000,
           callTimeoutMs: 30_000,
           maxPlugins: 32,
+          heartbeatIntervalMs: 1_500,
+          heartbeatTimeoutMs: 900,
         },
         spawning: {
           strategy: 'lazy',
@@ -290,6 +292,8 @@ describe('build runtime artifact resolution helpers', () => {
           deactivationTimeoutMs: 5_000,
           callTimeoutMs: 30_000,
           maxPlugins: 32,
+          heartbeatIntervalMs: 1_500,
+          heartbeatTimeoutMs: 900,
         },
         spawning: {
           strategy: 'lazy',

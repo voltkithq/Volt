@@ -1,4 +1,5 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
+use std::fmt;
 use std::fs;
 use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
@@ -27,6 +28,7 @@ const PLUGIN_ROUTE_INVALID_CODE: &str = "PLUGIN_ROUTE_INVALID";
 const SUPPORTED_PLUGIN_API_VERSIONS: &[u64] = &[1];
 const MAX_FRAME_SIZE: usize = 16 * 1024 * 1024;
 const DEFAULT_EXIT_WAIT_AFTER_KILL_MS: u64 = 250;
+const DEFAULT_PRE_SPAWN_GRACE_MS: u64 = 50;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PluginState {
@@ -79,8 +81,8 @@ pub(crate) struct PluginDiscoveryIssue {
     pub(crate) message: String,
 }
 
-#[cfg(test)]
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub(crate) struct PluginSnapshot {
     pub(crate) plugin_id: String,
     pub(crate) state: PluginState,
@@ -119,7 +121,7 @@ struct PluginRecord {
     manifest_path: PathBuf,
     enabled: bool,
     data_root: Option<PathBuf>,
-    #[cfg(test)]
+    #[allow(dead_code)]
     requested_capabilities: BTreeSet<String>,
     effective_capabilities: BTreeSet<String>,
     lifecycle: PluginLifecycle,
@@ -131,7 +133,7 @@ struct PluginRecord {
 
 #[derive(Debug, Clone)]
 struct PluginLifecycle {
-    state: PluginState,
+    state: Option<PluginState>,
     transitions: Vec<PluginStateTransition>,
     errors: Vec<PluginError>,
 }
@@ -153,6 +155,14 @@ struct PluginRuntimeError {
     code: String,
     message: String,
 }
+
+impl fmt::Display for PluginRuntimeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: {}", self.code, self.message)
+    }
+}
+
+impl std::error::Error for PluginRuntimeError {}
 
 trait PluginProcessFactory: Send + Sync {
     fn spawn(
@@ -300,14 +310,14 @@ impl PluginManager {
         Ok(manager)
     }
 
-    #[cfg(test)]
+    #[allow(dead_code)]
     pub(crate) fn get_plugin_state(&self, plugin_id: &str) -> Option<PluginSnapshot> {
         let registry = self.inner.registry.lock().ok()?;
         let record = registry.plugins.get(plugin_id)?;
         Some(record.snapshot())
     }
 
-    #[cfg(test)]
+    #[allow(dead_code)]
     pub(crate) fn get_states(&self) -> Vec<PluginSnapshot> {
         let Ok(registry) = self.inner.registry.lock() else {
             return Vec::new();
@@ -321,7 +331,7 @@ impl PluginManager {
         states
     }
 
-    #[cfg(test)]
+    #[allow(dead_code)]
     pub(crate) fn discovery_issues(&self) -> Vec<PluginDiscoveryIssue> {
         let Ok(registry) = self.inner.registry.lock() else {
             return Vec::new();
@@ -346,6 +356,10 @@ impl PluginManager {
     }
 
     pub(crate) fn start_pre_spawn(&self) {
+        self.start_pre_spawn_after(Duration::from_millis(DEFAULT_PRE_SPAWN_GRACE_MS));
+    }
+
+    pub(crate) fn start_pre_spawn_after(&self, delay: Duration) {
         let plugin_ids = self.pre_spawn_plugin_ids();
         if plugin_ids.is_empty() {
             return;
@@ -354,6 +368,9 @@ impl PluginManager {
         let _ = thread::Builder::new()
             .name("volt-plugin-pre-spawn".to_string())
             .spawn(move || {
+                if !delay.is_zero() {
+                    thread::sleep(delay);
+                }
                 for plugin_id in plugin_ids {
                     let _ = manager.ensure_plugin_running(&plugin_id);
                 }
@@ -1023,7 +1040,6 @@ impl PluginManager {
             manifest_path: manifest_path.to_path_buf(),
             enabled,
             data_root,
-            #[cfg(test)]
             requested_capabilities,
             effective_capabilities,
             lifecycle,
@@ -1529,8 +1545,8 @@ fn write_wire_message<W: Write>(writer: &mut W, message: &WireMessage) -> std::i
     writer.flush()
 }
 
-#[cfg(test)]
 impl PluginRecord {
+    #[allow(dead_code)]
     fn snapshot(&self) -> PluginSnapshot {
         PluginSnapshot {
             plugin_id: self.manifest.id.clone(),
@@ -1551,25 +1567,29 @@ impl PluginRecord {
 impl PluginLifecycle {
     fn new() -> Self {
         Self {
-            state: PluginState::Discovered,
+            state: None,
             transitions: Vec::new(),
             errors: Vec::new(),
         }
     }
 
     fn transition(&mut self, next_state: PluginState) -> Result<(), String> {
-        if !is_valid_transition(self.current_state(), next_state) {
+        if let Some(current_state) = self.state
+            && !is_valid_transition(current_state, next_state)
+        {
             return Err(format!(
                 "invalid plugin state transition: {:?} -> {:?}",
-                self.current_state(),
+                current_state, next_state
+            ));
+        }
+        if self.state.is_none() && next_state != PluginState::Discovered {
+            return Err(format!(
+                "invalid initial plugin state transition: {:?}",
                 next_state
             ));
         }
-        let previous_state = self
-            .transitions
-            .last()
-            .map(|transition| transition.new_state);
-        self.state = next_state;
+        let previous_state = self.state;
+        self.state = Some(next_state);
         self.transitions.push(PluginStateTransition {
             previous_state,
             new_state: next_state,
@@ -1586,7 +1606,16 @@ impl PluginLifecycle {
         details: Option<Value>,
         stderr: Option<String>,
     ) {
-        let _ = self.transition(PluginState::Failed);
+        if self.state.is_none() {
+            self.state = Some(PluginState::Failed);
+            self.transitions.push(PluginStateTransition {
+                previous_state: None,
+                new_state: PluginState::Failed,
+                timestamp_ms: now_ms(),
+            });
+        } else {
+            let _ = self.transition(PluginState::Failed);
+        }
         self.errors.push(PluginError {
             plugin_id: plugin_id.to_string(),
             state: PluginState::Failed,
@@ -1599,10 +1628,7 @@ impl PluginLifecycle {
     }
 
     fn current_state(&self) -> PluginState {
-        self.transitions
-            .last()
-            .map(|transition| transition.new_state)
-            .unwrap_or(self.state)
+        self.state.expect("plugin lifecycle must be initialized")
     }
 }
 
@@ -1804,11 +1830,26 @@ fn collect_manifest_paths(
     directory: &Path,
     manifest_paths: &mut Vec<PathBuf>,
 ) -> std::io::Result<()> {
+    let mut visited = HashSet::new();
+    collect_manifest_paths_inner(directory, manifest_paths, &mut visited)
+}
+
+fn collect_manifest_paths_inner(
+    directory: &Path,
+    manifest_paths: &mut Vec<PathBuf>,
+    visited_directories: &mut HashSet<PathBuf>,
+) -> std::io::Result<()> {
+    let resolved = fs::canonicalize(directory)?;
+    if !visited_directories.insert(resolved) {
+        return Ok(());
+    }
+
     for entry in fs::read_dir(directory)? {
         let entry = entry?;
         let path = entry.path();
-        if path.is_dir() {
-            collect_manifest_paths(&path, manifest_paths)?;
+        let file_type = entry.file_type()?;
+        if file_type.is_dir() || (file_type.is_symlink() && path.is_dir()) {
+            collect_manifest_paths_inner(&path, manifest_paths, visited_directories)?;
         } else if path.file_name().and_then(|value| value.to_str()) == Some(MANIFEST_FILE_NAME) {
             manifest_paths.push(path);
         }
@@ -1867,6 +1908,8 @@ fn sanitize_app_namespace(app_name: &str) -> String {
 }
 
 fn is_valid_reverse_domain(id: &str) -> bool {
+    // Plugin IDs deliberately restrict segments to lowercase ASCII alphanumerics.
+    // Hyphens remain reserved so host-side namespacing stays predictable.
     let segments = id.split('.').collect::<Vec<_>>();
     if segments.len() < 2 {
         return false;

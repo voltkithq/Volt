@@ -33,6 +33,16 @@ impl Drop for TempDir {
     }
 }
 
+#[cfg(unix)]
+fn create_dir_symlink(original: &Path, link: &Path) -> std::io::Result<()> {
+    std::os::unix::fs::symlink(original, link)
+}
+
+#[cfg(windows)]
+fn create_dir_symlink(original: &Path, link: &Path) -> std::io::Result<()> {
+    std::os::windows::fs::symlink_dir(original, link)
+}
+
 #[derive(Clone)]
 struct FakeProcessFactory {
     plans: Arc<Mutex<HashMap<String, FakePlan>>>,
@@ -737,6 +747,49 @@ fn pre_spawn_forces_startup_activation_after_window_ready_hook() {
 }
 
 #[test]
+fn shutdown_all_deactivates_running_plugins_cleanly() {
+    let root = TempDir::new("shutdown");
+    write_manifest(
+        &root.join("plugins/acme.search/volt-plugin.json"),
+        "acme.search",
+        &["fs"],
+    );
+    let manager = manager_with_factory(
+        RunnerPluginConfig {
+            enabled: vec!["acme.search".to_string()],
+            grants: BTreeMap::from([("acme.search".to_string(), vec!["fs".to_string()])]),
+            plugin_dirs: vec![root.join("plugins").display().to_string()],
+            ..RunnerPluginConfig::default()
+        },
+        Arc::new(FakeProcessFactory::new(HashMap::from([(
+            "acme.search".to_string(),
+            FakePlan {
+                requests: HashMap::from([(
+                    "ping".to_string(),
+                    FakeRequestOutcome::Success(serde_json::json!({ "ok": true })),
+                )]),
+                ..FakePlan::default()
+            },
+        )]))),
+    );
+
+    let _ = manager.handle_ipc_request(
+        &IpcRequest {
+            id: "req-1".to_string(),
+            method: "plugin:acme.search:ping".to_string(),
+            args: Value::Null,
+        },
+        Duration::from_millis(50),
+    );
+
+    manager.shutdown_all();
+
+    let snapshot = manager.get_plugin_state("acme.search").expect("plugin");
+    assert_eq!(snapshot.state, PluginState::Terminated);
+    assert!(!snapshot.process_running);
+}
+
+#[test]
 fn request_timeout_maps_to_ipc_timeout_error_without_crashing_plugin() {
     let root = TempDir::new("request-timeout");
     write_manifest(
@@ -920,5 +973,130 @@ fn boot_rule_validation_does_not_spawn_plugin_processes() {
             .data_root
             .expect("data root")
             .exists()
+    );
+}
+
+#[test]
+fn parse_plugin_manifest_rejects_hyphenated_ids() {
+    let root = TempDir::new("manifest-hyphen");
+    let plugin_root = root.join("plugin");
+    fs::create_dir_all(plugin_root.join("dist")).expect("plugin dir");
+    fs::write(plugin_root.join("dist/plugin.js"), b"export default {};\n").expect("backend");
+
+    let manifest = serde_json::json!({
+        "id": "acme.bad-plugin",
+        "name": "Bad Plugin",
+        "version": "0.1.0",
+        "apiVersion": 1,
+        "engine": { "volt": "^0.1.0" },
+        "backend": "./dist/plugin.js",
+        "capabilities": ["fs"]
+    });
+
+    let error = parse_plugin_manifest(
+        &serde_json::to_vec(&manifest).expect("manifest json"),
+        &plugin_root,
+    )
+    .expect_err("manifest should be rejected");
+    assert!(error.contains("reverse-domain"));
+}
+
+#[test]
+fn parse_plugin_manifest_rejects_duplicate_capabilities() {
+    let root = TempDir::new("manifest-dupes");
+    let plugin_root = root.join("plugin");
+    fs::create_dir_all(plugin_root.join("dist")).expect("plugin dir");
+    fs::write(plugin_root.join("dist/plugin.js"), b"export default {};\n").expect("backend");
+
+    let manifest = serde_json::json!({
+        "id": "acme.search",
+        "name": "Duplicate Caps",
+        "version": "0.1.0",
+        "apiVersion": 1,
+        "engine": { "volt": "^0.1.0" },
+        "backend": "./dist/plugin.js",
+        "capabilities": ["fs", "fs"]
+    });
+
+    let error = parse_plugin_manifest(
+        &serde_json::to_vec(&manifest).expect("manifest json"),
+        &plugin_root,
+    )
+    .expect_err("manifest should be rejected");
+    assert!(error.contains("duplicate capability"));
+}
+
+#[test]
+fn parse_plugin_manifest_rejects_missing_backend_entry() {
+    let root = TempDir::new("manifest-missing-backend");
+    let plugin_root = root.join("plugin");
+    fs::create_dir_all(&plugin_root).expect("plugin dir");
+
+    let manifest = serde_json::json!({
+        "id": "acme.search",
+        "name": "Missing Backend",
+        "version": "0.1.0",
+        "apiVersion": 1,
+        "engine": { "volt": "^0.1.0" },
+        "backend": "./dist/plugin.js",
+        "capabilities": ["fs"]
+    });
+
+    let error = parse_plugin_manifest(
+        &serde_json::to_vec(&manifest).expect("manifest json"),
+        &plugin_root,
+    )
+    .expect_err("manifest should be rejected");
+    assert!(error.contains("does not exist"));
+}
+
+#[test]
+fn parse_plugin_route_accepts_valid_routes() {
+    let route = parse_plugin_route("plugin:acme.search:ping")
+        .expect("route result")
+        .expect("plugin route");
+
+    assert_eq!(route.plugin_id, "acme.search");
+    assert_eq!(route.method, "ping");
+}
+
+#[test]
+fn parse_plugin_route_rejects_missing_channel() {
+    let error = parse_plugin_route("plugin:acme.search").expect_err("invalid route");
+    assert!(error.contains("plugin:<plugin-id>:<channel>"));
+}
+
+#[test]
+fn parse_plugin_route_rejects_empty_plugin_id() {
+    let error = parse_plugin_route("plugin::ping").expect_err("invalid route");
+    assert!(error.contains("include both plugin id and channel"));
+}
+
+#[test]
+fn collect_manifest_paths_skips_symlink_loops() {
+    let root = TempDir::new("symlink-loop");
+    let plugins_dir = root.join("plugins");
+    write_manifest(
+        &plugins_dir.join("acme.search/volt-plugin.json"),
+        "acme.search",
+        &["fs"],
+    );
+    let loop_link = plugins_dir.join("acme.search/loop");
+    if let Err(error) = create_dir_symlink(&plugins_dir, &loop_link) {
+        if error.kind() == std::io::ErrorKind::PermissionDenied {
+            return;
+        }
+        panic!("failed to create symlink loop: {error}");
+    }
+
+    let mut manifest_paths = Vec::new();
+    collect_manifest_paths(&plugins_dir, &mut manifest_paths).expect("scan manifests");
+
+    assert_eq!(manifest_paths.len(), 1);
+    assert_eq!(
+        manifest_paths[0]
+            .file_name()
+            .and_then(|value| value.to_str()),
+        Some("volt-plugin.json")
     );
 }
