@@ -48,9 +48,10 @@ pub fn ipc_init_script() -> String {
 
                 pending.set(id, { resolve: resolve, reject: reject });
                 window.ipc.postMessage(payload);
-                // Timeout matches the native IPC handler timeout (120s).
-                // Native dialogs (file picker, message box) block the backend
-                // thread while the user interacts, so this must be generous.
+                // Frontend timeout for IPC responses. This is a safety net for
+                // lost responses — dialogs bypass the Boa runtime but the
+                // frontend can't distinguish dialog calls, so this must
+                // accommodate user interaction time (e.g. file picker).
                 setTimeout(function() {
                     if (pending.has(id)) {
                         pending.delete(id);

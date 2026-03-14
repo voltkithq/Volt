@@ -9,7 +9,7 @@ use volt_core::ipc::IPC_MAX_REQUEST_BYTES;
 fn enforces_per_window_in_flight_limit() {
     let runtime =
         JsRuntimePool::start_with_options(2, JsRuntimeOptions::default()).expect("runtime");
-    let bridge = IpcBridge::new(runtime.client());
+    let bridge = IpcBridge::new(runtime.client(), &[]);
     let window_id = "window-1";
 
     for _ in 0..DEFAULT_MAX_IN_FLIGHT_PER_WINDOW {
@@ -27,7 +27,7 @@ fn enforces_per_window_in_flight_limit() {
 fn enforces_global_in_flight_limit() {
     let runtime =
         JsRuntimePool::start_with_options(2, JsRuntimeOptions::default()).expect("runtime");
-    let bridge = IpcBridge::new(runtime.client());
+    let bridge = IpcBridge::new(runtime.client(), &[]);
 
     let mut window_ids = Vec::new();
     for index in 0..DEFAULT_MAX_IN_FLIGHT_TOTAL {
@@ -48,7 +48,7 @@ fn enforces_global_in_flight_limit() {
 fn oversized_payload_is_rejected_before_it_consumes_in_flight_capacity() {
     let runtime =
         JsRuntimePool::start_with_options(2, JsRuntimeOptions::default()).expect("runtime");
-    let bridge = IpcBridge::new(runtime.client());
+    let bridge = IpcBridge::new(runtime.client(), &[]);
     let oversized = format!(
         r#"{{"id":"too-big","method":"echo","args":"{}"}}"#,
         "x".repeat(IPC_MAX_REQUEST_BYTES + 1)
