@@ -2,6 +2,7 @@
 members = [
     "crates/volt-core",
     "crates/volt-napi",
+    "crates/volt-plugin-host",
     "crates/volt-runner",
     "crates/volt-updater-helper",
 ]

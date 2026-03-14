@@ -5277,6 +5277,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "volt-plugin-host"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "boa_engine",
+ "serde",
+ "serde_json",
+ "tracing",
+ "tracing-subscriber",
+ "volt-core",
+]
+
+[[package]]
 name = "volt-runner"
 version = "0.1.0"
 dependencies = [
