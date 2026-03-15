@@ -4,7 +4,11 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::super::now_ms;
 
-static TEMP_DIR_COUNTER: AtomicU64 = AtomicU64::new(1);
+static UNIQUE_COUNTER: AtomicU64 = AtomicU64::new(1);
+
+fn next_unique_id() -> u64 {
+    UNIQUE_COUNTER.fetch_add(1, Ordering::Relaxed)
+}
 
 pub(super) struct TempDir {
     path: PathBuf,
@@ -12,7 +16,7 @@ pub(super) struct TempDir {
 
 impl TempDir {
     pub(super) fn new(name: &str) -> Self {
-        let sequence = TEMP_DIR_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let sequence = next_unique_id();
         let path = std::env::temp_dir().join(format!(
             "volt-plugin-manager-{name}-{}-{sequence}",
             now_ms()
@@ -23,6 +27,10 @@ impl TempDir {
 
     pub(super) fn join(&self, relative: &str) -> PathBuf {
         self.path.join(relative)
+    }
+
+    pub(super) fn path(&self) -> &Path {
+        &self.path
     }
 }
 
@@ -40,6 +48,10 @@ pub(super) fn create_dir_symlink(original: &Path, link: &Path) -> std::io::Resul
 #[cfg(windows)]
 pub(super) fn create_dir_symlink(original: &Path, link: &Path) -> std::io::Result<()> {
     std::os::windows::fs::symlink_dir(original, link)
+}
+
+pub(super) fn unique_app_name(prefix: &str) -> String {
+    format!("{prefix} {}-{}", now_ms(), next_unique_id())
 }
 
 pub(super) fn write_manifest(path: &Path, id: &str, capabilities: &[&str]) {

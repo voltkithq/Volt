@@ -1,10 +1,25 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, MutexGuard};
+
+use volt_core::{grant_store, plugin_grant_registry};
 
 use super::super::*;
 use super::access_support::FakeAccessPicker;
 use super::process_support::FakeProcessFactory;
 use crate::plugin_manager::process::WireMessage;
 use crate::runner::config::RunnerPluginConfig;
+
+/// Shared guard for all tests that touch global grant state (`grant_store`,
+/// `plugin_grant_registry`). Every test module that calls `clear_delegations` /
+/// `clear_grants` MUST acquire this lock to prevent cross-module interference
+/// when `cargo test` runs modules in parallel.
+static GRANT_TEST_GUARD: Mutex<()> = Mutex::new(());
+
+pub(super) fn lock_grant_state() -> MutexGuard<'static, ()> {
+    let guard = GRANT_TEST_GUARD.lock().expect("grant test guard");
+    plugin_grant_registry::clear_delegations();
+    grant_store::clear_grants();
+    guard
+}
 
 pub(super) fn manager_with_factory(
     config: RunnerPluginConfig,

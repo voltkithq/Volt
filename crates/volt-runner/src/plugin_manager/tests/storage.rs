@@ -6,7 +6,7 @@ use sha2::{Digest, Sha256};
 
 use super::super::*;
 use super::access_support::FakeAccessPicker;
-use super::fs_support::{TempDir, write_manifest};
+use super::fs_support::{TempDir, unique_app_name, write_manifest};
 use super::process_support::FakeProcessFactory;
 use crate::plugin_manager::process::WireMessage;
 use crate::runner::config::RunnerPluginConfig;
@@ -19,7 +19,7 @@ fn manager_for_storage_tests() -> PluginManager {
         &["fs"],
     );
     PluginManager::with_dependencies(
-        format!("Volt Storage Test {}", now_ms()),
+        unique_app_name("Volt Storage Test"),
         &["fs".to_string(), "secureStorage".to_string()],
         RunnerPluginConfig {
             enabled: vec!["acme.search".to_string()],

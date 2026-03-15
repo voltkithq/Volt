@@ -2,13 +2,12 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use serde_json::json;
-use volt_core::grant_store;
 
 use super::super::*;
 use super::access_support::FakeAccessPicker;
 use super::fs_support::{TempDir, write_manifest};
 use super::process_support::FakeProcessFactory;
-use super::shared::manager_with_picker;
+use super::shared::{lock_grant_state, manager_with_picker};
 use crate::plugin_manager::process::WireMessage;
 use crate::runner::config::RunnerPluginConfig;
 
@@ -77,7 +76,7 @@ fn plugin_request(
 
 #[test]
 fn request_access_returns_grant_and_only_delegates_it_to_the_requesting_plugin() {
-    grant_store::clear_grants();
+    let _guard = lock_grant_state();
     let selected_root = TempDir::new("selected-folder");
     let selected_path = selected_root.join("picked");
     std::fs::create_dir_all(&selected_path).expect("selected dir");
@@ -122,12 +121,11 @@ fn request_access_returns_grant_and_only_delegates_it_to_the_requesting_plugin()
             .message
             .contains("not delegated")
     );
-    grant_store::clear_grants();
 }
 
 #[test]
 fn request_access_returns_null_when_user_cancels() {
-    grant_store::clear_grants();
+    let _guard = lock_grant_state();
     let picker = FakeAccessPicker::from_responses(vec![Ok(None)]);
     let manager = manager_for_access_tests(picker);
 
@@ -139,5 +137,4 @@ fn request_access_returns_null_when_user_cancels() {
     );
 
     assert_eq!(response.payload, Some(serde_json::Value::Null));
-    grant_store::clear_grants();
 }
