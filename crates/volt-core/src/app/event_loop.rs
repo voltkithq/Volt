@@ -1,14 +1,9 @@
 use super::command_handling::{
     CommandContext, ensure_shutdown_cleanup, handle_command, log_command_observability,
 };
-use super::window_management::{
-    debug_assert_window_invariants, mark_all_windows_closed, remove_window_and_maybe_quit,
-    set_window_active,
-};
-use super::{App, AppError, AppEvent, allocate_js_window_id};
+use super::window_management::{debug_assert_window_invariants, remove_window_and_maybe_quit};
+use super::{App, AppError, AppEvent};
 use crate::command;
-use crate::webview::create_webview;
-use crate::window::create_window;
 use global_hotkey::GlobalHotKeyManager;
 use global_hotkey::hotkey::HotKey;
 use std::collections::HashMap;
@@ -21,8 +16,11 @@ use tao::keyboard::KeyCode;
 mod command_batch;
 #[path = "event_loop/native_events.rs"]
 mod native_events;
+#[path = "event_loop/user_events.rs"]
+mod user_events;
 
 use command_batch::{MAX_COMMANDS_PER_TICK, drain_command_batch};
+use user_events::{UserEventContext, handle_user_event};
 
 pub(super) fn run_event_loop<F>(mut app: App, mut on_event: F) -> Result<(), AppError>
 where
@@ -183,106 +181,31 @@ where
                     on_event(app_event);
                 }
 
-                match app_event {
-                    AppEvent::CreateWindow {
-                        window_config,
-                        webview_config,
-                        js_window_id,
-                    } => {
-                        let resolved_js_id =
-                            js_window_id.clone().unwrap_or_else(allocate_js_window_id);
-                        match create_window(event_loop_window_target, window_config) {
-                            Ok(window_handle) => {
-                                match create_webview(
-                                    window_handle.inner(),
-                                    webview_config,
-                                    config.devtools,
-                                    asset_bundle.clone(),
-                                    resolved_js_id.clone(),
-                                    &mut web_context,
-                                ) {
-                                    Ok(webview) => {
-                                        let id = window_handle.id();
-                                        windows.insert(id, (window_handle, webview));
-                                        set_window_active(&mut window_states, id);
-                                        js_to_tao.insert(resolved_js_id.clone(), id);
-                                        tao_to_js.insert(id, resolved_js_id);
-                                        debug_assert_window_invariants(
-                                            &windows,
-                                            &js_to_tao,
-                                            &tao_to_js,
-                                            &window_states,
-                                        );
-                                    }
-                                    Err(e) => {
-                                        log::error!("Failed to create webview: {e}");
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                log::error!("Failed to create window: {e}");
-                            }
-                        }
-                    }
+                let mut user_event_context = UserEventContext {
+                    windows: &mut windows,
+                    window_states: &mut window_states,
+                    js_to_tao: &mut js_to_tao,
+                    tao_to_js: &mut tao_to_js,
+                    bridge_lifecycle: &bridge_lifecycle,
+                    hotkey_manager: &hotkey_manager,
+                    registered_hotkeys: &mut registered_hotkeys,
+                    app_menu: &mut app_menu,
+                    tray_handle: &mut tray_handle,
+                    shutdown_cleanup_done: &mut shutdown_cleanup_done,
+                    control_flow,
+                    on_event: &mut on_event,
+                    config: &config,
+                    asset_bundle: asset_bundle.clone(),
+                    web_context: &mut web_context,
+                };
 
-                    AppEvent::CloseWindow(window_id) => {
-                        let should_shutdown = remove_window_and_maybe_quit(
-                            *window_id,
-                            &mut windows,
-                            &mut window_states,
-                            &mut js_to_tao,
-                            &mut tao_to_js,
-                            control_flow,
-                            &mut on_event,
-                        );
-                        if should_shutdown {
-                            ensure_shutdown_cleanup(
-                                &mut shutdown_cleanup_done,
-                                &bridge_lifecycle,
-                                &hotkey_manager,
-                                &mut registered_hotkeys,
-                                &mut app_menu,
-                                &mut tray_handle,
-                            );
-                        }
-                    }
+                handle_user_event(
+                    app_event,
+                    event_loop_window_target,
+                    &mut user_event_context,
+                );
 
-                    AppEvent::Quit => {
-                        mark_all_windows_closed(&mut window_states, windows.keys().copied());
-                        windows.clear();
-                        js_to_tao.clear();
-                        tao_to_js.clear();
-                        debug_assert_window_invariants(
-                            &windows,
-                            &js_to_tao,
-                            &tao_to_js,
-                            &window_states,
-                        );
-                        *control_flow = ControlFlow::Exit;
-                        ensure_shutdown_cleanup(
-                            &mut shutdown_cleanup_done,
-                            &bridge_lifecycle,
-                            &hotkey_manager,
-                            &mut registered_hotkeys,
-                            &mut app_menu,
-                            &mut tray_handle,
-                        );
-                    }
-
-                    AppEvent::EvaluateScript { window_id, script } => {
-                        if let Some((_handle, webview)) = windows.get(window_id)
-                            && let Err(e) = webview.evaluate_script(script)
-                        {
-                            log::error!("Failed to evaluate script: {e}");
-                        }
-                    }
-
-                    AppEvent::ProcessCommands
-                    | AppEvent::IpcMessage { .. }
-                    | AppEvent::MenuEvent { .. }
-                    | AppEvent::ShortcutTriggered { .. }
-                    | AppEvent::TrayEvent { .. } => {}
-                }
+                debug_assert_window_invariants(&windows, &js_to_tao, &tao_to_js, &window_states);
             }
 
             Event::LoopDestroyed => {
