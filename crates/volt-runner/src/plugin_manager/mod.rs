@@ -2,6 +2,7 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
+use serde::Serialize;
 use serde_json::Value;
 #[cfg(test)]
 use volt_core::ipc::IPC_HANDLER_TIMEOUT_CODE;
@@ -19,6 +20,7 @@ mod host_api_helpers;
 mod host_api_storage;
 mod host_api_support;
 mod lifecycle;
+mod lifecycle_bus;
 mod manifest;
 mod paths;
 mod process;
@@ -27,6 +29,7 @@ mod watchdog;
 
 use self::access::{NativePluginAccessPicker, PluginAccessPicker};
 use self::lifecycle::{PluginLifecycle, now_ms};
+use self::lifecycle_bus::LifecycleBus;
 use self::manifest::{compute_effective_capabilities, parse_plugin_manifest, parse_plugin_route};
 use self::paths::{
     collect_manifest_paths, ensure_plugin_data_root, resolve_app_data_root,
@@ -52,9 +55,14 @@ const PLUGIN_NOT_AVAILABLE_CODE: &str = "PLUGIN_NOT_AVAILABLE";
 const PLUGIN_ROUTE_INVALID_CODE: &str = "PLUGIN_ROUTE_INVALID";
 const PLUGIN_RUNTIME_ERROR_CODE: &str = "PLUGIN_RUNTIME_ERROR";
 const PLUGIN_STORAGE_ERROR_CODE: &str = "PLUGIN_STORAGE_ERROR";
+const PLUGIN_AUTO_DISABLED_CODE: &str = "PLUGIN_AUTO_DISABLED";
 const DEFAULT_PRE_SPAWN_GRACE_MS: u64 = 50;
+const DEFAULT_PLUGIN_ERROR_HISTORY_LIMIT: usize = 50;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) use self::lifecycle_bus::{PluginLifecycleEvent, SubscriptionId};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) enum PluginState {
     Discovered,
     Validated,
@@ -68,15 +76,16 @@ pub(crate) enum PluginState {
     Disabled,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct PluginStateTransition {
     pub(crate) previous_state: Option<PluginState>,
     pub(crate) new_state: PluginState,
     pub(crate) timestamp_ms: u64,
 }
 
-#[derive(Debug, Clone)]
-#[allow(dead_code)]
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct PluginError {
     pub(crate) plugin_id: String,
     pub(crate) state: PluginState,
@@ -87,7 +96,8 @@ pub(crate) struct PluginError {
     pub(crate) timestamp_ms: u64,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct PluginResourceMetrics {
     pub(crate) pid: Option<u32>,
     pub(crate) started_at_ms: Option<u64>,
@@ -98,27 +108,38 @@ pub(crate) struct PluginResourceMetrics {
     pub(crate) heartbeat_failures: u32,
 }
 
-#[derive(Debug, Clone)]
-#[allow(dead_code)]
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct PluginDiscoveryIssue {
     pub(crate) path: Option<PathBuf>,
     pub(crate) message: String,
 }
 
-#[derive(Debug, Clone)]
-#[allow(dead_code)]
-pub(crate) struct PluginSnapshot {
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PluginRegistrationSnapshot {
+    pub(crate) command_count: usize,
+    pub(crate) event_subscription_count: usize,
+    pub(crate) ipc_handler_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PluginStateSnapshot {
     pub(crate) plugin_id: String,
-    pub(crate) state: PluginState,
+    pub(crate) current_state: PluginState,
     pub(crate) enabled: bool,
     pub(crate) manifest_path: PathBuf,
     pub(crate) data_root: Option<PathBuf>,
     pub(crate) requested_capabilities: Vec<String>,
     pub(crate) effective_capabilities: Vec<String>,
-    pub(crate) transitions: Vec<PluginStateTransition>,
+    pub(crate) transition_history: Vec<PluginStateTransition>,
     pub(crate) errors: Vec<PluginError>,
     pub(crate) metrics: PluginResourceMetrics,
     pub(crate) process_running: bool,
+    pub(crate) active_registrations: PluginRegistrationSnapshot,
+    pub(crate) delegated_grant_count: usize,
+    pub(crate) consecutive_failures: u32,
 }
 
 #[derive(Clone)]
@@ -132,6 +153,8 @@ struct PluginManagerInner {
     app_data_root: PathBuf,
     factory: Arc<dyn PluginProcessFactory>,
     access_picker: Arc<dyn PluginAccessPicker>,
+    error_history_limit: usize,
+    lifecycle_bus: LifecycleBus,
     registry: Mutex<PluginRegistry>,
 }
 

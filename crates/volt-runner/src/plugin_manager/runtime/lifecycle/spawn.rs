@@ -3,42 +3,48 @@ use std::sync::Arc;
 use crate::plugin_manager::runtime::PluginStartupMode;
 use crate::plugin_manager::{
     HostIpcSettings, PLUGIN_NOT_AVAILABLE_CODE, PLUGIN_RUNTIME_ERROR_CODE, PluginBootstrapConfig,
-    PluginManager, PluginProcessHandle, PluginRuntimeError, PluginState, now_ms,
+    PluginLifecycleEvent, PluginManager, PluginProcessHandle, PluginRuntimeError, PluginState,
+    now_ms,
 };
 
 impl PluginManager {
-    #[allow(dead_code)]
     pub(in crate::plugin_manager) fn ensure_plugin_loaded(
         &self,
         plugin_id: &str,
     ) -> Result<Arc<dyn PluginProcessHandle>, PluginRuntimeError> {
-        self.ensure_plugin_started(plugin_id, PluginStartupMode::LoadOnly)
+        self.ensure_plugin_started(plugin_id, PluginStartupMode::LoadOnly, false)
     }
 
     pub(in crate::plugin_manager) fn ensure_plugin_running(
         &self,
         plugin_id: &str,
     ) -> Result<Arc<dyn PluginProcessHandle>, PluginRuntimeError> {
-        self.ensure_plugin_started(plugin_id, PluginStartupMode::Activate)
+        self.ensure_plugin_started(plugin_id, PluginStartupMode::Activate, false)
+    }
+
+    pub(in crate::plugin_manager) fn retry_failed_plugin(
+        &self,
+        plugin_id: &str,
+    ) -> Result<Arc<dyn PluginProcessHandle>, PluginRuntimeError> {
+        self.ensure_plugin_started(plugin_id, PluginStartupMode::Activate, true)
     }
 
     fn ensure_plugin_started(
         &self,
         plugin_id: &str,
         mode: PluginStartupMode,
+        allow_retry_from_failed: bool,
     ) -> Result<Arc<dyn PluginProcessHandle>, PluginRuntimeError> {
         let spawn_lock = {
-            let registry = self.inner.registry.lock().map_err(|_| PluginRuntimeError {
-                code: PLUGIN_RUNTIME_ERROR_CODE.to_string(),
-                message: "plugin registry is unavailable".to_string(),
-            })?;
+            let registry = self
+                .inner
+                .registry
+                .lock()
+                .map_err(|_| registry_unavailable())?;
             let record = registry
                 .plugins
                 .get(plugin_id)
-                .ok_or_else(|| PluginRuntimeError {
-                    code: PLUGIN_NOT_AVAILABLE_CODE.to_string(),
-                    message: format!("plugin '{plugin_id}' is not registered"),
-                })?;
+                .ok_or_else(|| unavailable_plugin(plugin_id))?;
             record.spawn_lock.clone()
         };
         let _guard = spawn_lock.lock().map_err(|_| PluginRuntimeError {
@@ -55,7 +61,11 @@ impl PluginManager {
             return Ok(process);
         }
 
-        let bootstrap = self.prepare_spawn(plugin_id, mode)?;
+        let (bootstrap, spawn_event) =
+            self.prepare_spawn(plugin_id, mode, allow_retry_from_failed)?;
+        if let Some(event) = spawn_event {
+            self.emit_lifecycle_event(event);
+        }
         let process = self.inner.factory.spawn(&bootstrap)?;
         let manager = self.clone();
         let plugin_id_for_exit = plugin_id.to_string();
@@ -78,10 +88,7 @@ impl PluginManager {
                 process.stderr_snapshot(),
             );
             let _ = process.kill();
-            return Err(PluginRuntimeError {
-                code: PLUGIN_NOT_AVAILABLE_CODE.to_string(),
-                message: format!("plugin '{plugin_id}' failed before ready"),
-            });
+            return Err(unavailable_message(plugin_id, "failed before ready"));
         }
         self.transition_plugin(plugin_id, PluginState::Loaded)?;
         if mode == PluginStartupMode::LoadOnly {
@@ -106,16 +113,12 @@ impl PluginManager {
                 process.stderr_snapshot(),
             );
             let _ = process.kill();
-            return Err(PluginRuntimeError {
-                code: PLUGIN_NOT_AVAILABLE_CODE.to_string(),
-                message: format!("plugin '{plugin_id}' failed to activate"),
-            });
+            return Err(unavailable_message(plugin_id, "failed to activate"));
         }
         self.transition_plugin(plugin_id, PluginState::Active)?;
         self.transition_plugin(plugin_id, PluginState::Running)?;
         self.record_activity(plugin_id);
         self.start_watchdog(plugin_id.to_string(), process.clone());
-
         Ok(())
     }
 
@@ -140,84 +143,88 @@ impl PluginManager {
         &self,
         plugin_id: &str,
         mode: PluginStartupMode,
-    ) -> Result<PluginBootstrapConfig, PluginRuntimeError> {
-        let mut registry = self.inner.registry.lock().map_err(|_| PluginRuntimeError {
-            code: PLUGIN_RUNTIME_ERROR_CODE.to_string(),
-            message: "plugin registry is unavailable".to_string(),
-        })?;
+        allow_retry_from_failed: bool,
+    ) -> Result<(PluginBootstrapConfig, Option<PluginLifecycleEvent>), PluginRuntimeError> {
+        let mut registry = self
+            .inner
+            .registry
+            .lock()
+            .map_err(|_| registry_unavailable())?;
+        let current_state = registry
+            .plugins
+            .get(plugin_id)
+            .map(|record| record.lifecycle.current_state())
+            .ok_or_else(|| unavailable_plugin(plugin_id))?;
+        let spawn_event =
+            match current_state {
+                PluginState::Validated | PluginState::Terminated => Some(
+                    self.transition_plugin_locked(&mut registry, plugin_id, PluginState::Spawning)?,
+                ),
+                PluginState::Failed if allow_retry_from_failed => Some(
+                    self.transition_plugin_locked(&mut registry, plugin_id, PluginState::Spawning)?,
+                ),
+                PluginState::Loaded if mode == PluginStartupMode::Activate => None,
+                PluginState::Active | PluginState::Running => None,
+                PluginState::Disabled => {
+                    return Err(PluginRuntimeError {
+                        code: PLUGIN_NOT_AVAILABLE_CODE.to_string(),
+                        message: format!("plugin '{plugin_id}' is disabled"),
+                    });
+                }
+                PluginState::Failed => {
+                    return Err(PluginRuntimeError {
+                        code: PLUGIN_NOT_AVAILABLE_CODE.to_string(),
+                        message: format!("plugin '{plugin_id}' is in failed state"),
+                    });
+                }
+                other => {
+                    return Err(PluginRuntimeError {
+                        code: PLUGIN_RUNTIME_ERROR_CODE.to_string(),
+                        message: format!(
+                            "plugin '{plugin_id}' cannot be spawned from state {:?}",
+                            other
+                        ),
+                    });
+                }
+            };
+
         let record = registry
             .plugins
-            .get_mut(plugin_id)
-            .ok_or_else(|| PluginRuntimeError {
-                code: PLUGIN_NOT_AVAILABLE_CODE.to_string(),
-                message: format!("plugin '{plugin_id}' is not registered"),
-            })?;
-
-        match record.lifecycle.current_state() {
-            PluginState::Validated | PluginState::Terminated => {
-                record
-                    .lifecycle
-                    .transition(PluginState::Spawning)
-                    .map_err(|message| PluginRuntimeError {
-                        code: PLUGIN_RUNTIME_ERROR_CODE.to_string(),
-                        message,
-                    })?;
-            }
-            PluginState::Loaded if mode == PluginStartupMode::Activate => {}
-            PluginState::Active | PluginState::Running => {}
-            PluginState::Disabled => {
-                return Err(PluginRuntimeError {
-                    code: PLUGIN_NOT_AVAILABLE_CODE.to_string(),
-                    message: format!("plugin '{plugin_id}' is disabled"),
-                });
-            }
-            PluginState::Failed => {
-                return Err(PluginRuntimeError {
-                    code: PLUGIN_NOT_AVAILABLE_CODE.to_string(),
-                    message: format!("plugin '{plugin_id}' is in failed state"),
-                });
-            }
-            other => {
-                return Err(PluginRuntimeError {
-                    code: PLUGIN_RUNTIME_ERROR_CODE.to_string(),
-                    message: format!(
-                        "plugin '{plugin_id}' cannot be spawned from state {:?}",
-                        other
-                    ),
-                });
-            }
-        }
-
+            .get(plugin_id)
+            .expect("plugin exists after state transition");
         let data_root = record.data_root.clone().ok_or_else(|| PluginRuntimeError {
             code: PLUGIN_RUNTIME_ERROR_CODE.to_string(),
             message: format!("plugin '{plugin_id}' is missing a data root"),
         })?;
-        Ok(PluginBootstrapConfig {
-            plugin_id: record.manifest.id.clone(),
-            backend_entry: record.manifest.backend_entry.display().to_string(),
-            manifest: record.manifest.raw_manifest.clone(),
-            capabilities: record.effective_capabilities.iter().cloned().collect(),
-            data_root: data_root.display().to_string(),
-            delegated_grants: record
-                .delegated_grants
-                .iter()
-                .filter_map(|grant_id| {
-                    volt_core::grant_store::resolve_grant(grant_id)
-                        .ok()
-                        .map(|path| crate::plugin_manager::DelegatedGrant {
-                            grant_id: grant_id.clone(),
-                            path: path.display().to_string(),
-                        })
-                })
-                .collect(),
-            host_ipc_settings: HostIpcSettings {
-                heartbeat_interval_ms: self.inner.config.limits.heartbeat_interval_ms,
-                heartbeat_timeout_ms: self.inner.config.limits.heartbeat_timeout_ms,
-                call_timeout_ms: self.inner.config.limits.call_timeout_ms,
-                max_inflight: 64,
-                max_queue_depth: 256,
+        Ok((
+            PluginBootstrapConfig {
+                plugin_id: record.manifest.id.clone(),
+                backend_entry: record.manifest.backend_entry.display().to_string(),
+                manifest: record.manifest.raw_manifest.clone(),
+                capabilities: record.effective_capabilities.iter().cloned().collect(),
+                data_root: data_root.display().to_string(),
+                delegated_grants: record
+                    .delegated_grants
+                    .iter()
+                    .filter_map(|grant_id| {
+                        volt_core::grant_store::resolve_grant(grant_id)
+                            .ok()
+                            .map(|path| crate::plugin_manager::DelegatedGrant {
+                                grant_id: grant_id.clone(),
+                                path: path.display().to_string(),
+                            })
+                    })
+                    .collect(),
+                host_ipc_settings: HostIpcSettings {
+                    heartbeat_interval_ms: self.inner.config.limits.heartbeat_interval_ms,
+                    heartbeat_timeout_ms: self.inner.config.limits.heartbeat_timeout_ms,
+                    call_timeout_ms: self.inner.config.limits.call_timeout_ms,
+                    max_inflight: 64,
+                    max_queue_depth: 256,
+                },
             },
-        })
+            spawn_event,
+        ))
     }
 
     fn register_process(
@@ -233,5 +240,26 @@ impl PluginManager {
             record.metrics.started_at_ms = Some(started_at_ms);
             record.process = Some(process);
         }
+    }
+}
+
+fn registry_unavailable() -> PluginRuntimeError {
+    PluginRuntimeError {
+        code: PLUGIN_RUNTIME_ERROR_CODE.to_string(),
+        message: "plugin registry is unavailable".to_string(),
+    }
+}
+
+fn unavailable_plugin(plugin_id: &str) -> PluginRuntimeError {
+    PluginRuntimeError {
+        code: PLUGIN_NOT_AVAILABLE_CODE.to_string(),
+        message: format!("plugin '{plugin_id}' is not registered"),
+    }
+}
+
+fn unavailable_message(plugin_id: &str, reason: &str) -> PluginRuntimeError {
+    PluginRuntimeError {
+        code: PLUGIN_NOT_AVAILABLE_CODE.to_string(),
+        message: format!("plugin '{plugin_id}' {reason}"),
     }
 }

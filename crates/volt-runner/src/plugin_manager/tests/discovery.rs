@@ -33,7 +33,7 @@ fn discovery_finds_manifests_and_reports_missing_directories() {
         manager
             .get_plugin_state("acme.search")
             .expect("plugin")
-            .state,
+            .current_state,
         PluginState::Validated
     );
     assert_eq!(manager.discovery_issues().len(), 1);
@@ -106,7 +106,7 @@ fn capability_intersection_rejects_unsatisfied_plugins_and_keeps_exact_matches()
     );
 
     let failed = manager.get_plugin_state("acme.search").expect("search");
-    assert_eq!(failed.state, PluginState::Failed);
+    assert_eq!(failed.current_state, PluginState::Failed);
     assert_eq!(failed.plugin_id, "acme.search");
     assert!(failed.enabled);
     assert!(
@@ -120,12 +120,15 @@ fn capability_intersection_rejects_unsatisfied_plugins_and_keeps_exact_matches()
     );
     assert_eq!(failed.effective_capabilities, vec!["fs".to_string()]);
     assert!(failed.data_root.as_ref().expect("data root").exists());
-    assert_eq!(failed.transitions.len(), 2);
-    assert_eq!(failed.transitions[0].new_state, PluginState::Discovered);
-    assert_eq!(failed.transitions[1].new_state, PluginState::Failed);
+    assert_eq!(failed.transition_history.len(), 2);
+    assert_eq!(
+        failed.transition_history[0].new_state,
+        PluginState::Discovered
+    );
+    assert_eq!(failed.transition_history[1].new_state, PluginState::Failed);
     assert_eq!(failed.errors.len(), 1);
     assert_eq!(failed.errors[0].plugin_id, "acme.search");
-    assert_eq!(failed.errors[0].state, PluginState::Failed);
+    assert_eq!(failed.errors[0].state, PluginState::Discovered);
     assert_eq!(failed.errors[0].code, PLUGIN_NOT_AVAILABLE_CODE);
     assert!(failed.errors[0].message.contains("unsatisfiable"));
     assert!(failed.errors[0].details.is_some());
@@ -136,7 +139,7 @@ fn capability_intersection_rejects_unsatisfied_plugins_and_keeps_exact_matches()
     assert!(!failed.process_running);
 
     let exact = manager.get_plugin_state("acme.clip").expect("clip");
-    assert_eq!(exact.state, PluginState::Validated);
+    assert_eq!(exact.current_state, PluginState::Validated);
     assert_eq!(exact.effective_capabilities, vec!["fs".to_string()]);
 }
 
@@ -169,7 +172,7 @@ fn boot_rule_validation_does_not_spawn_plugin_processes() {
         manager
             .get_plugin_state("acme.search")
             .expect("plugin")
-            .state,
+            .current_state,
         PluginState::Validated
     );
     assert!(

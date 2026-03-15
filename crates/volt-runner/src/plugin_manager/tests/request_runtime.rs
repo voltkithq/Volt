@@ -60,7 +60,7 @@ fn request_timeout_maps_to_ipc_timeout_error_without_crashing_plugin() {
         manager
             .get_plugin_state("acme.search")
             .expect("plugin")
-            .state,
+            .current_state,
         PluginState::Running
     );
 }
@@ -110,7 +110,7 @@ fn request_crash_transitions_running_plugin_to_failed() {
     );
     thread::sleep(Duration::from_millis(20));
     let snapshot = manager.get_plugin_state("acme.search").expect("plugin");
-    assert_eq!(snapshot.state, PluginState::Failed);
+    assert_eq!(snapshot.current_state, PluginState::Failed);
     assert!(snapshot.errors.iter().any(|error| {
         error
             .details
@@ -167,7 +167,7 @@ fn watchdog_kills_after_two_missed_heartbeats() {
         manager
             .get_plugin_state("acme.search")
             .expect("plugin")
-            .state,
+            .current_state,
         PluginState::Failed
     );
 }

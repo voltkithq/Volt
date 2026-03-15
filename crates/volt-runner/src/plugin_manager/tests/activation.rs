@@ -56,7 +56,7 @@ fn lazy_spawn_happens_on_first_ipc_request() {
     assert_eq!(response.result, Some(serde_json::json!({ "ok": true })));
     assert_eq!(factory.spawn_count.load(Ordering::Relaxed), 1);
     let snapshot = manager.get_plugin_state("acme.search").expect("plugin");
-    assert_eq!(snapshot.state, PluginState::Running);
+    assert_eq!(snapshot.current_state, PluginState::Running);
     assert_eq!(snapshot.metrics.pid, Some(42));
     assert!(snapshot.metrics.started_at_ms.is_some());
     assert!(snapshot.metrics.last_activity_ms.is_some());
@@ -107,7 +107,7 @@ fn spawn_timeout_moves_plugin_to_failed() {
         manager
             .get_plugin_state("acme.search")
             .expect("plugin")
-            .state,
+            .current_state,
         PluginState::Failed
     );
     let snapshot = manager.get_plugin_state("acme.search").expect("plugin");
@@ -155,7 +155,7 @@ fn spawn_crash_moves_plugin_to_failed() {
         Some(PLUGIN_NOT_AVAILABLE_CODE)
     );
     let snapshot = manager.get_plugin_state("acme.search").expect("plugin");
-    assert_eq!(snapshot.state, PluginState::Failed);
+    assert_eq!(snapshot.current_state, PluginState::Failed);
     assert!(snapshot.errors.iter().any(|error| {
         error
             .details
@@ -206,7 +206,7 @@ fn activation_error_moves_plugin_to_failed() {
         Some(PLUGIN_NOT_AVAILABLE_CODE)
     );
     let snapshot = manager.get_plugin_state("acme.search").expect("plugin");
-    assert_eq!(snapshot.state, PluginState::Failed);
+    assert_eq!(snapshot.current_state, PluginState::Failed);
     assert!(
         snapshot
             .errors
@@ -247,7 +247,7 @@ fn pre_spawn_forces_startup_activation_after_window_ready_hook() {
         manager
             .get_plugin_state("acme.search")
             .expect("plugin")
-            .state,
+            .current_state,
         PluginState::Running
     );
 }
