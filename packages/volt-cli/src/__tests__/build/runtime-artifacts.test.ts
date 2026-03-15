@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, utimesSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, utimesSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { __testOnly } from '../commands/build.js';
+
+import { __testOnly } from '../../commands/build.js';
 
 describe('build runtime artifact resolution helpers', () => {
   it('infers build platform from known target triples', () => {
@@ -84,10 +85,16 @@ describe('build runtime artifact resolution helpers', () => {
       'linux',
     );
 
-    const result = __testOnly.selectRuntimeArtifact(candidates, '/repo/target/release', () => false);
+    const result = __testOnly.selectRuntimeArtifact(
+      candidates,
+      '/repo/target/release',
+      () => false,
+    );
     expect(result.artifact).toBeNull();
     expect(result.attemptedPaths).toHaveLength(1);
-    expect(result.attemptedPaths[0]).toMatch(/[\\/]repo[\\/]target[\\/]release[\\/]libvolt_napi\.so$/);
+    expect(result.attemptedPaths[0]).toMatch(
+      /[\\/]repo[\\/]target[\\/]release[\\/]libvolt_napi\.so$/,
+    );
   });
 
   it('cleans up stale asset bundle path when present', () => {
@@ -167,149 +174,5 @@ describe('build runtime artifact resolution helpers', () => {
     const tempDir = __testOnly.createScopedTempDirectory(root, 'run-');
     expect(tempDir.startsWith(root)).toBe(true);
     expect(existsSync(tempDir)).toBe(true);
-  });
-
-  it('resolves configured backend entry path', () => {
-    const projectDir = mkdtempSync(join(tmpdir(), 'volt-build-backend-'));
-    const backendPath = join(projectDir, 'src', 'backend.ts');
-    mkdirSync(join(projectDir, 'src'), { recursive: true });
-    writeFileSync(backendPath, 'export {};\n', 'utf8');
-
-    const resolved = __testOnly.resolveBackendEntry(projectDir, './src/backend.ts');
-    expect(resolved).toBe(backendPath);
-  });
-
-  it('returns null when no backend entry is present', () => {
-    const projectDir = mkdtempSync(join(tmpdir(), 'volt-build-backend-empty-'));
-    const resolved = __testOnly.resolveBackendEntry(projectDir, undefined);
-    expect(resolved).toBeNull();
-  });
-
-  it('rejects unsupported configured backend entry extension', () => {
-    const projectDir = mkdtempSync(join(tmpdir(), 'volt-build-backend-ext-'));
-    const backendPath = join(projectDir, 'src', 'backend.json');
-    mkdirSync(join(projectDir, 'src'), { recursive: true });
-    writeFileSync(backendPath, '{}\n', 'utf8');
-
-    expect(() => __testOnly.resolveBackendEntry(projectDir, './src/backend.json')).toThrow(
-      'Unsupported backend entry extension',
-    );
-  });
-
-  it('writes a safe fallback backend bundle when no backend entry exists', async () => {
-    const projectDir = mkdtempSync(join(tmpdir(), 'volt-build-backend-fallback-'));
-    const bundlePath = join(projectDir, 'backend.bundle.mjs');
-
-    await __testOnly.buildBackendBundle(projectDir, null, bundlePath);
-
-    expect(readFileSync(bundlePath, 'utf8').trim()).toBe('void 0;');
-  });
-
-  it('builds backend entry and preserves volt:* imports as externals', async () => {
-    const projectDir = mkdtempSync(join(tmpdir(), 'volt-build-backend-esbuild-'));
-    const srcDir = join(projectDir, 'src');
-    const backendPath = join(srcDir, 'backend.ts');
-    const bundlePath = join(projectDir, 'backend.bundle.mjs');
-    mkdirSync(srcDir, { recursive: true });
-    writeFileSync(
-      backendPath,
-      [
-        "import { sha256 } from 'volt:crypto';",
-        'export async function run() {',
-        "  return sha256('volt');",
-        '}',
-      ].join('\n'),
-      'utf8',
-    );
-
-    await __testOnly.buildBackendBundle(projectDir, backendPath, bundlePath);
-
-    const bundled = readFileSync(bundlePath, 'utf8');
-    expect(bundled.length).toBeGreaterThan(0);
-    expect(bundled).toContain('volt:crypto');
-  });
-
-  it('rejects configured backend paths that escape project root', () => {
-    const workspaceDir = mkdtempSync(join(tmpdir(), 'volt-build-backend-scope-'));
-    const projectDir = join(workspaceDir, 'app');
-    const outsidePath = join(workspaceDir, 'outside.ts');
-    mkdirSync(projectDir, { recursive: true });
-    writeFileSync(outsidePath, 'export {};\n', 'utf8');
-
-    expect(() => __testOnly.resolveBackendEntry(projectDir, '../outside.ts')).toThrow(
-      'must reside within project root',
-    );
-  });
-
-  it('builds runner config payload with permissions, plugin settings, and window options', () => {
-    const payload = __testOnly.buildRunnerConfigPayload({
-      name: 'IPC Demo',
-      devtools: true,
-      permissions: ['clipboard'],
-      plugins: {
-        enabled: ['acme.search'],
-        grants: {
-          'acme.search': ['fs', 'http'],
-        },
-        pluginDirs: ['./plugins'],
-        limits: {
-          activationTimeoutMs: 10_000,
-          deactivationTimeoutMs: 5_000,
-          callTimeoutMs: 30_000,
-          maxPlugins: 32,
-          heartbeatIntervalMs: 1_500,
-          heartbeatTimeoutMs: 900,
-        },
-        spawning: {
-          strategy: 'lazy',
-          idleTimeoutMs: 300_000,
-          preSpawn: ['acme.search'],
-        },
-      },
-      runtime: {
-        poolSize: 3,
-      },
-      runtimePoolSize: 3,
-      window: {
-        width: 980,
-        height: 760,
-        title: 'Volt IPC Demo',
-      },
-    });
-
-    expect(payload).toMatchObject({
-      name: 'IPC Demo',
-      devtools: true,
-      permissions: ['clipboard'],
-      plugins: {
-        enabled: ['acme.search'],
-        grants: {
-          'acme.search': ['fs', 'http'],
-        },
-        pluginDirs: ['./plugins'],
-        limits: {
-          activationTimeoutMs: 10_000,
-          deactivationTimeoutMs: 5_000,
-          callTimeoutMs: 30_000,
-          maxPlugins: 32,
-          heartbeatIntervalMs: 1_500,
-          heartbeatTimeoutMs: 900,
-        },
-        spawning: {
-          strategy: 'lazy',
-          idleTimeoutMs: 300_000,
-          preSpawn: ['acme.search'],
-        },
-      },
-      runtime: {
-        poolSize: 3,
-      },
-      runtimePoolSize: 3,
-      window: {
-        width: 980,
-        height: 760,
-        title: 'Volt IPC Demo',
-      },
-    });
   });
 });

@@ -1,66 +1,11 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { loadConfig } from '../utils/config.js';
-import { validateConfig } from '../utils/config/validator.js';
-import { existsSync } from 'node:fs';
+import { describe, expect, it, vi } from 'vitest';
 
-// Mock fs.existsSync so we control which config files "exist"
-vi.mock('node:fs', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('node:fs')>();
-  return {
-    ...actual,
-    existsSync: vi.fn(actual.existsSync),
-  };
-});
+import { validateConfig } from '../../utils/config/validator.js';
 
-describe('loadConfig', () => {
-  let consoleWarn: ReturnType<typeof vi.spyOn>;
-  let consoleError: ReturnType<typeof vi.spyOn>;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-  });
-
-  afterEach(() => {
-    consoleWarn.mockRestore();
-    consoleError.mockRestore();
-  });
-
-  it('returns default config when no config file exists', async () => {
-    vi.mocked(existsSync).mockReturnValue(false);
-    const config = await loadConfig('/fake/project');
-    expect(config.name).toBe('Volt App');
-    expect(config.version).toBe('0.1.0');
-    expect(consoleWarn).toHaveBeenCalledWith(
-      expect.stringContaining('No config file found'),
-    );
-  });
-
-  it('throws in strict mode when no config file exists', async () => {
-    vi.mocked(existsSync).mockReturnValue(false);
-    await expect(
-      loadConfig('/fake/project', { strict: true, commandName: 'build' }),
-    ).rejects.toThrow('No config file found');
-  });
-
-  it('throws when a config file exists but fails to load', async () => {
-    vi.mocked(existsSync).mockReturnValue(true);
-    await expect(loadConfig('/fake/project')).rejects.toThrow(
-      /Failed to load.*config/,
-    );
-  });
-});
-
-describe('config validation (via loadConfig internals)', () => {
+describe('config validation', () => {
   const validPublicKey = Buffer.alloc(32, 7).toString('base64');
 
-  // Since validateConfig is private, we test it indirectly through its effects.
-  // The validation logic is documented well enough to test by checking
-  // the exported types and expected behavior.
-
   it('VoltConfig has expected required field: name', () => {
-    // Type-level test: VoltConfig requires `name`
     const config = { name: 'Required' } satisfies import('voltkit').VoltConfig;
     expect(config.name).toBe('Required');
   });
@@ -306,7 +251,7 @@ describe('config validation (via loadConfig internals)', () => {
       expect.stringContaining("Unknown permission 'bogus' in 'plugins.grants.acme.search'."),
     );
     expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("'plugins.spawning.strategy' must be \"lazy\" or \"eager\"."),
+      expect.stringContaining('\'plugins.spawning.strategy\' must be "lazy" or "eager".'),
     );
     expect(errorSpy).toHaveBeenCalledWith(
       expect.stringContaining("'plugins.limits.heartbeatIntervalMs' must be a positive integer."),
