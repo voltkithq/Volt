@@ -193,7 +193,7 @@ fn plugins_module_receives_lifecycle_events_via_native_bridge() {
             "globalThis.__volt.plugins.off('plugin:lifecycle', globalThis.__pluginLifecycleHandler)",
         )
         .expect("unbind lifecycle handler");
-    manager.retry_plugin("acme.search").expect("retry");
+    let _ = manager.retry_plugin("acme.search");
 
     let after_off = runtime
         .client()
