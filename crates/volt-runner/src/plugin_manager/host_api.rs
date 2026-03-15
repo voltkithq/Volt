@@ -109,6 +109,8 @@ impl PluginManager {
             "plugin:storage:delete" => self.handle_storage_request(plugin_id, "delete", &payload),
             "plugin:storage:keys" => self.handle_storage_request(plugin_id, "keys", &payload),
             "plugin:request-access" => self.handle_request_access(plugin_id, &payload),
+            "plugin:bind-grant" => self.handle_bind_grant(plugin_id, &payload),
+            "plugin:list-grants" => self.handle_list_grants(plugin_id),
             "plugin:grant-fs:read-file" => {
                 self.handle_grant_fs_request(plugin_id, "read-file", &payload)
             }

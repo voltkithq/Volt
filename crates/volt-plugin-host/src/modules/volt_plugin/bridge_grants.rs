@@ -27,3 +27,24 @@ pub(super) fn request_access(
     };
     super::bridge_support::request_value("plugin:request-access", options, context)
 }
+
+pub(super) fn bind_grant(
+    _this: &JsValue,
+    args: &[JsValue],
+    context: &mut Context,
+) -> JsResult<JsValue> {
+    let grant_id = super::bridge_support::required_string(args, 0, context, "grant id")?;
+    super::bridge_support::request_value(
+        "plugin:bind-grant",
+        serde_json::json!({ "grantId": grant_id }),
+        context,
+    )
+}
+
+pub(super) fn list_grants(
+    _this: &JsValue,
+    _args: &[JsValue],
+    context: &mut Context,
+) -> JsResult<JsValue> {
+    super::bridge_support::request_value("plugin:list-grants", serde_json::json!({}), context)
+}

@@ -7,6 +7,57 @@ use super::{PLUGIN_ACCESS_ERROR_CODE, PLUGIN_FS_ERROR_CODE, PluginManager, Plugi
 use crate::plugin_manager::host_api_helpers::{lock_error, required_string, unavailable_plugin};
 
 impl PluginManager {
+    pub(crate) fn delegate_grant(
+        &self,
+        plugin_id: &str,
+        grant_id: &str,
+    ) -> Result<(), PluginRuntimeError> {
+        let mut registry = self.inner.registry.lock().map_err(lock_error)?;
+        let Some(record) = registry.plugins.get_mut(plugin_id) else {
+            return Err(unavailable_plugin(plugin_id));
+        };
+
+        volt_core::plugin_grant_registry::delegate_grant(plugin_id, grant_id)
+            .map_err(access_registry_error)?;
+        record.delegated_grants.insert(grant_id.to_string());
+        Ok(())
+    }
+
+    pub(crate) fn revoke_grant(
+        &self,
+        plugin_id: &str,
+        grant_id: &str,
+    ) -> Result<(), PluginRuntimeError> {
+        let process = {
+            let mut registry = self.inner.registry.lock().map_err(lock_error)?;
+            let Some(record) = registry.plugins.get_mut(plugin_id) else {
+                return Err(unavailable_plugin(plugin_id));
+            };
+            record.delegated_grants.remove(grant_id);
+            record.process.clone()
+        };
+
+        volt_core::plugin_grant_registry::revoke_grant(plugin_id, grant_id);
+
+        if let Some(process) = process {
+            process.send_event("plugin:grant-revoked", json!({ "grantId": grant_id }))?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn list_delegated_grants(
+        &self,
+        plugin_id: &str,
+    ) -> Result<Vec<String>, PluginRuntimeError> {
+        let registry = self.inner.registry.lock().map_err(lock_error)?;
+        if !registry.plugins.contains_key(plugin_id) {
+            return Err(unavailable_plugin(plugin_id));
+        }
+        Ok(volt_core::plugin_grant_registry::list_delegated_grants(
+            plugin_id,
+        ))
+    }
+
     pub(super) fn handle_request_access(
         &self,
         plugin_id: &str,
@@ -34,29 +85,31 @@ impl PluginManager {
             return Ok(Value::Null);
         };
 
-        let grant_id = volt_core::grant_store::create_grant(path.clone()).map_err(|error| {
-            PluginRuntimeError {
-                code: PLUGIN_ACCESS_ERROR_CODE.to_string(),
-                message: error.to_string(),
-            }
-        })?;
-        volt_core::plugin_grant_registry::delegate_grant(plugin_id, &grant_id).map_err(
-            |error| PluginRuntimeError {
-                code: PLUGIN_ACCESS_ERROR_CODE.to_string(),
-                message: error.to_string(),
-            },
-        )?;
-
-        let mut registry = self.inner.registry.lock().map_err(lock_error)?;
-        let Some(record) = registry.plugins.get_mut(plugin_id) else {
-            return Err(unavailable_plugin(plugin_id));
-        };
-        record.delegated_grants.insert(grant_id.clone());
+        let grant_id =
+            volt_core::grant_store::create_grant(path.clone()).map_err(access_registry_error)?;
+        self.delegate_grant(plugin_id, &grant_id)?;
 
         Ok(json!({
             "grantId": grant_id,
             "path": path.display().to_string(),
         }))
+    }
+
+    pub(super) fn handle_bind_grant(
+        &self,
+        plugin_id: &str,
+        payload: &Value,
+    ) -> Result<Value, PluginRuntimeError> {
+        let grant_id = required_string(payload, "grantId")?;
+        let path = self.resolve_delegated_grant_root(plugin_id, &grant_id)?;
+        Ok(json!({
+            "grantId": grant_id,
+            "path": path.display().to_string(),
+        }))
+    }
+
+    pub(super) fn handle_list_grants(&self, plugin_id: &str) -> Result<Value, PluginRuntimeError> {
+        Ok(json!(self.list_delegated_grants(plugin_id)?))
     }
 
     pub(super) fn handle_grant_fs_request(
@@ -77,21 +130,18 @@ impl PluginManager {
         grant_id: &str,
     ) -> Result<PathBuf, PluginRuntimeError> {
         let registry = self.inner.registry.lock().map_err(lock_error)?;
-        let Some(record) = registry.plugins.get(plugin_id) else {
+        if !registry.plugins.contains_key(plugin_id) {
             return Err(unavailable_plugin(plugin_id));
-        };
-        if !record.delegated_grants.contains(grant_id)
-            || !volt_core::plugin_grant_registry::is_delegated(plugin_id, grant_id)
-        {
+        }
+        drop(registry);
+
+        if !volt_core::plugin_grant_registry::is_delegated(plugin_id, grant_id) {
             return Err(PluginRuntimeError {
                 code: PLUGIN_FS_ERROR_CODE.to_string(),
                 message: format!("grant '{grant_id}' is not delegated to plugin '{plugin_id}'"),
             });
         }
-        volt_core::grant_store::resolve_grant(grant_id).map_err(|error| PluginRuntimeError {
-            code: PLUGIN_FS_ERROR_CODE.to_string(),
-            message: error.to_string(),
-        })
+        volt_core::grant_store::resolve_grant(grant_id).map_err(fs_error)
     }
 }
 
@@ -108,24 +158,21 @@ impl AccessRequestOptions {
             code: PLUGIN_ACCESS_ERROR_CODE.to_string(),
             message: "payload must be an object".to_string(),
         })?;
-        let title = object
-            .get("title")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(str::to_string);
-        let directory = object
-            .get("directory")
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
-        let multiple = object
-            .get("multiple")
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
         Ok(Self {
-            title,
-            directory,
-            multiple,
+            title: object
+                .get("title")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string),
+            directory: object
+                .get("directory")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            multiple: object
+                .get("multiple")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
         })
     }
 }
@@ -142,5 +189,19 @@ fn access_error(message: String) -> PluginRuntimeError {
     PluginRuntimeError {
         code: PLUGIN_ACCESS_ERROR_CODE.to_string(),
         message,
+    }
+}
+
+fn access_registry_error(error: impl std::fmt::Display) -> PluginRuntimeError {
+    PluginRuntimeError {
+        code: PLUGIN_ACCESS_ERROR_CODE.to_string(),
+        message: error.to_string(),
+    }
+}
+
+fn fs_error(error: impl std::fmt::Display) -> PluginRuntimeError {
+    PluginRuntimeError {
+        code: PLUGIN_FS_ERROR_CODE.to_string(),
+        message: error.to_string(),
     }
 }

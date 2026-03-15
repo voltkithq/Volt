@@ -1,7 +1,7 @@
 use boa_engine::module::{Module, SyntheticModuleInitializer};
 use boa_engine::{Context, JsResult, JsValue, Source, js_string};
 
-const VOLT_PLUGIN_BOOTSTRAP: &str = r#"
+pub(super) const VOLT_PLUGIN_BOOTSTRAP: &str = r#"
 (() => {
     const state = {
         activate: null,
@@ -57,21 +57,61 @@ const VOLT_PLUGIN_BOOTSTRAP: &str = r#"
         return value;
     };
 
+    const dispatchEvent = async (event, data) => {
+        const handlers = state.events.get(ensureName(event, 'event name')) ?? [];
+        for (const handler of handlers) {
+            await handler(data ?? null);
+        }
+        return null;
+    };
+
+    const rememberGrant = (grant) => {
+        if (grant && grant.grantId) {
+            state.grants.set(grant.grantId, Object.freeze(grant));
+        }
+        return grant;
+    };
+
     for (const grant of native.delegatedGrants()) {
-        state.grants.set(grant.grantId, Object.freeze(grant));
+        rememberGrant(grant);
     }
+
+    const assertGrantActive = (grantId) => {
+        if (!state.grants.has(grantId)) {
+            throw new Error(`grant is not delegated to this plugin: ${grantId}`);
+        }
+    };
 
     const createGrantFs = (grantId) => Object.freeze({
         grantId,
-        readFile(path) { return native.grantFsReadFile(grantId, ensureName(path, 'path')); },
+        readFile(path) {
+            assertGrantActive(grantId);
+            return native.grantFsReadFile(grantId, ensureName(path, 'path'));
+        },
         writeFile(path, data) {
+            assertGrantActive(grantId);
             native.grantFsWriteFile(grantId, ensureName(path, 'path'), String(data));
         },
-        readDir(path) { return native.grantFsReadDir(grantId, ensureName(path, 'path')); },
-        stat(path) { return native.grantFsStat(grantId, ensureName(path, 'path')); },
-        exists(path) { return native.grantFsExists(grantId, ensureName(path, 'path')); },
-        mkdir(path) { return native.grantFsMkdir(grantId, ensureName(path, 'path')); },
-        remove(path) { return native.grantFsRemove(grantId, ensureName(path, 'path')); },
+        readDir(path) {
+            assertGrantActive(grantId);
+            return native.grantFsReadDir(grantId, ensureName(path, 'path'));
+        },
+        stat(path) {
+            assertGrantActive(grantId);
+            return native.grantFsStat(grantId, ensureName(path, 'path'));
+        },
+        exists(path) {
+            assertGrantActive(grantId);
+            return native.grantFsExists(grantId, ensureName(path, 'path'));
+        },
+        mkdir(path) {
+            assertGrantActive(grantId);
+            return native.grantFsMkdir(grantId, ensureName(path, 'path'));
+        },
+        remove(path) {
+            assertGrantActive(grantId);
+            return native.grantFsRemove(grantId, ensureName(path, 'path'));
+        },
     });
 
     const context = Object.freeze({
@@ -157,17 +197,16 @@ const VOLT_PLUGIN_BOOTSTRAP: &str = r#"
         }),
         grants: Object.freeze({
             async requestAccess(options) {
-                const access = native.requestAccess(ensureObject(options, 'request access options'));
-                if (access && access.grantId) {
-                    state.grants.set(access.grantId, Object.freeze(access));
-                }
-                return access;
+                return rememberGrant(
+                    native.requestAccess(ensureObject(options, 'request access options'))
+                );
+            },
+            async list() {
+                return native.listGrants();
             },
             bindFsScope(grantId) {
                 const normalizedGrantId = ensureName(grantId, 'grant id');
-                if (!state.grants.has(normalizedGrantId)) {
-                    throw new Error(`grant is not delegated to this plugin: ${grantId}`);
-                }
+                rememberGrant(native.bindGrant(normalizedGrantId));
                 return createGrantFs(normalizedGrantId);
             },
         }),
@@ -221,10 +260,13 @@ const VOLT_PLUGIN_BOOTSTRAP: &str = r#"
     };
 
     globalThis.__volt_plugin_dispatch_event__ = async (event, data) => {
-        const handlers = state.events.get(ensureName(event, 'event name')) ?? [];
-        for (const handler of handlers) {
-            await maybeAwait(handler(data ?? null));
-        }
+        return dispatchEvent(event, data);
+    };
+
+    globalThis.__volt_plugin_revoke_grant__ = async (grantId) => {
+        const normalizedGrantId = ensureName(grantId, 'grant id');
+        state.grants.delete(normalizedGrantId);
+        await dispatchEvent('grant:revoked', { grantId: normalizedGrantId });
         return null;
     };
 
@@ -251,13 +293,5 @@ pub fn build_module(context: &mut Context) -> JsResult<Module> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn bootstrap_contains_storage_and_grants_surface() {
-        assert!(VOLT_PLUGIN_BOOTSTRAP.contains("storage:"));
-        assert!(VOLT_PLUGIN_BOOTSTRAP.contains("requestAccess"));
-        assert!(VOLT_PLUGIN_BOOTSTRAP.contains("bindFsScope"));
-    }
-}
+#[path = "tests.rs"]
+mod tests;
