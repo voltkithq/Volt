@@ -29,6 +29,7 @@ impl TempDir {
         self.path.join(relative)
     }
 
+    #[allow(dead_code)]
     pub(super) fn path(&self) -> &Path {
         &self.path
     }
