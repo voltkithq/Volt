@@ -8,7 +8,7 @@ use volt_core::ipc::IpcRequest;
 use super::super::*;
 use super::fs_support::{TempDir, write_manifest};
 use super::process_support::{FakePlan, FakeProcessFactory, FakeRequestOutcome};
-use super::shared::manager_with_factory;
+use super::shared::{manager_with_factory, register_ipc_handler};
 use crate::runner::config::RunnerPluginConfig;
 
 #[test]
@@ -87,13 +87,14 @@ fn shutdown_all_deactivates_running_plugins_cleanly() {
             "acme.search".to_string(),
             FakePlan {
                 requests: HashMap::from([(
-                    "ping".to_string(),
+                    "plugin:invoke-ipc".to_string(),
                     FakeRequestOutcome::Success(serde_json::json!({ "ok": true })),
                 )]),
                 ..FakePlan::default()
             },
         )]))),
     );
+    register_ipc_handler(&manager, "acme.search", "ping");
 
     let _ = manager.handle_ipc_request(
         &IpcRequest {

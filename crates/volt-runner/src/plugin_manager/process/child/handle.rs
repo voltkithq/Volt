@@ -35,6 +35,7 @@ impl ChildPluginProcess {
             child: Mutex::new(child),
             stdin: Mutex::new(BufWriter::new(stdin)),
             waiters: Mutex::new(HashMap::new()),
+            message_listener: Mutex::new(None),
             ready: ReadyState::default(),
             exit: ExitState::default(),
             next_id: AtomicU64::new(1),
@@ -71,6 +72,26 @@ impl PluginProcessHandle for ChildPluginProcess {
             });
         }
         Ok(())
+    }
+
+    fn send_event(&self, method: &str, payload: Value) -> Result<(), PluginRuntimeError> {
+        crate::plugin_manager::process::io::write_wire_message(
+            &mut *self.inner.stdin.lock().map_err(|_| PluginRuntimeError {
+                code: PLUGIN_RUNTIME_ERROR_CODE.to_string(),
+                message: "plugin stdin is unavailable".to_string(),
+            })?,
+            &WireMessage {
+                message_type: WireMessageType::Event,
+                id: self.inner.next_id(),
+                method: method.to_string(),
+                payload: Some(payload),
+                error: None,
+            },
+        )
+        .map_err(|error| PluginRuntimeError {
+            code: PLUGIN_RUNTIME_ERROR_CODE.to_string(),
+            message: format!("failed to send plugin event: {error}"),
+        })
     }
 
     fn request(
@@ -149,6 +170,15 @@ impl PluginProcessHandle for ChildPluginProcess {
 
     fn set_exit_listener(&self, listener: Arc<dyn Fn(ProcessExitInfo) + Send + Sync>) {
         self.inner.exit.set_listener(listener);
+    }
+
+    fn set_message_listener(
+        &self,
+        listener: Arc<dyn Fn(WireMessage) -> Option<WireMessage> + Send + Sync>,
+    ) {
+        if let Ok(mut current) = self.inner.message_listener.lock() {
+            *current = Some(listener);
+        }
     }
 
     fn stderr_snapshot(&self) -> Option<String> {

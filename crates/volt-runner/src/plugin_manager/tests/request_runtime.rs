@@ -10,7 +10,7 @@ use volt_core::ipc::IpcRequest;
 use super::super::*;
 use super::fs_support::{TempDir, write_manifest};
 use super::process_support::{FakeOutcome, FakePlan, FakeProcessFactory, FakeRequestOutcome};
-use super::shared::manager_with_factory;
+use super::shared::{manager_with_factory, register_ipc_handler};
 use crate::runner::config::{RunnerPluginConfig, RunnerPluginLimits};
 
 #[test]
@@ -31,11 +31,15 @@ fn request_timeout_maps_to_ipc_timeout_error_without_crashing_plugin() {
         Arc::new(FakeProcessFactory::new(HashMap::from([(
             "acme.search".to_string(),
             FakePlan {
-                requests: HashMap::from([("ping".to_string(), FakeRequestOutcome::Timeout)]),
+                requests: HashMap::from([(
+                    "plugin:invoke-ipc".to_string(),
+                    FakeRequestOutcome::Timeout,
+                )]),
                 ..FakePlan::default()
             },
         )]))),
     );
+    register_ipc_handler(&manager, "acme.search", "ping");
 
     let response = manager
         .handle_ipc_request(
@@ -79,11 +83,15 @@ fn request_crash_transitions_running_plugin_to_failed() {
         Arc::new(FakeProcessFactory::new(HashMap::from([(
             "acme.search".to_string(),
             FakePlan {
-                requests: HashMap::from([("ping".to_string(), FakeRequestOutcome::Crash(17))]),
+                requests: HashMap::from([(
+                    "plugin:invoke-ipc".to_string(),
+                    FakeRequestOutcome::Crash(17),
+                )]),
                 ..FakePlan::default()
             },
         )]))),
     );
+    register_ipc_handler(&manager, "acme.search", "ping");
 
     let response = manager
         .handle_ipc_request(
@@ -142,6 +150,7 @@ fn watchdog_kills_after_two_missed_heartbeats() {
             },
         )]))),
     );
+    register_ipc_handler(&manager, "acme.search", "ping");
 
     let _ = manager.handle_ipc_request(
         &IpcRequest {

@@ -11,6 +11,10 @@ use volt_core::permissions::Permission;
 use crate::runner::config::RunnerPluginConfig;
 
 mod discovery;
+mod host_api;
+mod host_api_fs;
+mod host_api_helpers;
+mod host_api_support;
 mod lifecycle;
 mod manifest;
 mod paths;
@@ -32,6 +36,9 @@ const PLUGIN_RUNTIME_ERROR_CODE: &str = "PLUGIN_RUNTIME_ERROR";
 const PLUGIN_HEARTBEAT_TIMEOUT_CODE: &str = "PLUGIN_HEARTBEAT_TIMEOUT";
 const PLUGIN_NOT_AVAILABLE_CODE: &str = "PLUGIN_NOT_AVAILABLE";
 const PLUGIN_ROUTE_INVALID_CODE: &str = "PLUGIN_ROUTE_INVALID";
+const PLUGIN_COMMAND_NOT_FOUND_CODE: &str = "PLUGIN_COMMAND_NOT_FOUND";
+const PLUGIN_FS_ERROR_CODE: &str = "PLUGIN_FS_ERROR";
+const PLUGIN_IPC_HANDLER_NOT_FOUND_CODE: &str = "PLUGIN_IPC_HANDLER_NOT_FOUND";
 const DEFAULT_PRE_SPAWN_GRACE_MS: u64 = 50;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -114,10 +121,11 @@ struct PluginManagerInner {
     registry: Mutex<PluginRegistry>,
 }
 
-#[derive(Default)]
 struct PluginRegistry {
     plugins: HashMap<String, PluginRecord>,
     discovery_issues: Vec<PluginDiscoveryIssue>,
+    commands: HashMap<String, PluginCommandRoute>,
+    ipc_handlers: HashMap<String, PluginRoute>,
 }
 
 struct PluginRecord {
@@ -131,6 +139,7 @@ struct PluginRecord {
     metrics: PluginResourceMetrics,
     process: Option<Arc<dyn PluginProcessHandle>>,
     pending_requests: usize,
+    registrations: PluginRegistrations,
     spawn_lock: Arc<Mutex<()>>,
 }
 
@@ -138,6 +147,8 @@ struct PluginRecord {
 struct PluginManifest {
     id: String,
     capabilities: Vec<String>,
+    backend_entry: PathBuf,
+    raw_manifest: Value,
 }
 
 #[derive(Debug, Clone)]
@@ -147,7 +158,20 @@ struct PluginRoute {
 }
 
 #[derive(Debug, Clone)]
-struct PluginRuntimeError {
+struct PluginCommandRoute {
+    plugin_id: String,
+    command_id: String,
+}
+
+#[derive(Debug, Clone, Default)]
+struct PluginRegistrations {
+    commands: HashSet<String>,
+    event_subscriptions: HashSet<String>,
+    ipc_handlers: HashSet<String>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct PluginRuntimeError {
     code: String,
     message: String,
 }
@@ -171,6 +195,7 @@ trait PluginProcessHandle: Send + Sync {
     fn process_id(&self) -> Option<u32>;
     fn wait_for_ready(&self, timeout: std::time::Duration) -> Result<(), PluginRuntimeError>;
     fn activate(&self, timeout: std::time::Duration) -> Result<(), PluginRuntimeError>;
+    fn send_event(&self, method: &str, payload: Value) -> Result<(), PluginRuntimeError>;
     fn request(
         &self,
         method: &str,
@@ -181,6 +206,7 @@ trait PluginProcessHandle: Send + Sync {
     fn deactivate(&self, timeout: std::time::Duration) -> Result<(), PluginRuntimeError>;
     fn kill(&self) -> Result<(), PluginRuntimeError>;
     fn set_exit_listener(&self, listener: Arc<dyn Fn(ProcessExitInfo) + Send + Sync>);
+    fn set_message_listener(&self, listener: MessageListener);
     fn stderr_snapshot(&self) -> Option<String>;
 }
 
@@ -190,11 +216,25 @@ struct ProcessExitInfo {
 }
 
 type ExitListener = Arc<dyn Fn(ProcessExitInfo) + Send + Sync>;
+type MessageListener = Arc<dyn Fn(WireMessage) -> Option<WireMessage> + Send + Sync>;
+
+impl PluginRegistry {
+    fn new() -> Self {
+        Self {
+            plugins: HashMap::new(),
+            discovery_issues: Vec::new(),
+            commands: HashMap::new(),
+            ipc_handlers: HashMap::new(),
+        }
+    }
+}
 
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct PluginBootstrapConfig {
     plugin_id: String,
+    backend_entry: String,
+    manifest: Value,
     capabilities: Vec<String>,
     data_root: String,
     delegated_grants: Vec<DelegatedGrant>,

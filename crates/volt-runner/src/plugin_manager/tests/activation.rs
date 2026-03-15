@@ -9,7 +9,7 @@ use volt_core::ipc::IpcRequest;
 use super::super::*;
 use super::fs_support::{TempDir, write_manifest};
 use super::process_support::{FakeOutcome, FakePlan, FakeProcessFactory, FakeRequestOutcome};
-use super::shared::manager_with_factory;
+use super::shared::{manager_with_factory, register_ipc_handler};
 use crate::runner::config::{RunnerPluginConfig, RunnerPluginSpawning};
 
 #[test]
@@ -24,7 +24,7 @@ fn lazy_spawn_happens_on_first_ipc_request() {
         "acme.search".to_string(),
         FakePlan {
             requests: HashMap::from([(
-                "ping".to_string(),
+                "plugin:invoke-ipc".to_string(),
                 FakeRequestOutcome::Success(serde_json::json!({ "ok": true })),
             )]),
             ..FakePlan::default()
@@ -39,6 +39,7 @@ fn lazy_spawn_happens_on_first_ipc_request() {
         },
         factory.clone(),
     );
+    register_ipc_handler(&manager, "acme.search", "ping");
 
     assert_eq!(factory.spawn_count.load(Ordering::Relaxed), 0);
     let response = manager
@@ -85,6 +86,7 @@ fn spawn_timeout_moves_plugin_to_failed() {
             },
         )]))),
     );
+    register_ipc_handler(&manager, "acme.search", "ping");
 
     let response = manager
         .handle_ipc_request(
@@ -135,6 +137,7 @@ fn spawn_crash_moves_plugin_to_failed() {
             },
         )]))),
     );
+    register_ipc_handler(&manager, "acme.search", "ping");
 
     let response = manager
         .handle_ipc_request(
@@ -185,6 +188,7 @@ fn activation_error_moves_plugin_to_failed() {
             },
         )]))),
     );
+    register_ipc_handler(&manager, "acme.search", "ping");
 
     let response = manager
         .handle_ipc_request(

@@ -1,7 +1,10 @@
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::super::now_ms;
+
+static TEMP_DIR_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 pub(super) struct TempDir {
     path: PathBuf,
@@ -9,7 +12,11 @@ pub(super) struct TempDir {
 
 impl TempDir {
     pub(super) fn new(name: &str) -> Self {
-        let path = std::env::temp_dir().join(format!("volt-plugin-manager-{name}-{}", now_ms()));
+        let sequence = TEMP_DIR_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!(
+            "volt-plugin-manager-{name}-{}-{sequence}",
+            now_ms()
+        ));
         fs::create_dir_all(&path).expect("create temp dir");
         Self { path }
     }
