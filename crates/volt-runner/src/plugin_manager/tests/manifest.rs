@@ -78,6 +78,32 @@ fn parse_plugin_manifest_rejects_missing_backend_entry() {
 }
 
 #[test]
+fn parse_plugin_manifest_reads_prefetch_on_surfaces() {
+    let root = TempDir::new("manifest-prefetch");
+    let plugin_root = root.join("plugin");
+    fs::create_dir_all(plugin_root.join("dist")).expect("plugin dir");
+    fs::write(plugin_root.join("dist/plugin.js"), b"export default {};\n").expect("backend");
+
+    let manifest = serde_json::json!({
+        "id": "acme.search",
+        "name": "Search",
+        "version": "0.1.0",
+        "apiVersion": 1,
+        "engine": { "volt": "^0.1.0" },
+        "backend": "./dist/plugin.js",
+        "capabilities": ["fs"],
+        "prefetchOn": ["search-panel", "file-explorer"]
+    });
+
+    let parsed = parse_plugin_manifest(
+        &serde_json::to_vec(&manifest).expect("manifest json"),
+        &plugin_root,
+    )
+    .expect("manifest should parse");
+    assert_eq!(parsed.prefetch_on, vec!["search-panel", "file-explorer"]);
+}
+
+#[test]
 fn parse_plugin_route_accepts_valid_routes() {
     let route = parse_plugin_route("plugin:acme.search:ping")
         .expect("route")

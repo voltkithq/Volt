@@ -7,10 +7,11 @@ use serde_json::json;
 use volt_core::permissions::Permission;
 
 use super::{
-    PLUGIN_NOT_AVAILABLE_CODE, PluginDiscoveryIssue, PluginLifecycle, PluginManager,
-    PluginProcessFactory, PluginRecord, PluginRegistrations, PluginRegistry, PluginResourceMetrics,
-    PluginState, collect_manifest_paths, compute_effective_capabilities, ensure_plugin_data_root,
-    parse_plugin_manifest, resolve_app_data_root, resolve_plugin_directory,
+    NativePluginAccessPicker, PLUGIN_NOT_AVAILABLE_CODE, PluginDiscoveryIssue, PluginLifecycle,
+    PluginManager, PluginProcessFactory, PluginRecord, PluginRegistrations, PluginRegistry,
+    PluginResourceMetrics, PluginState, collect_manifest_paths, compute_effective_capabilities,
+    ensure_plugin_data_root, parse_plugin_manifest, resolve_app_data_root,
+    resolve_plugin_directory,
 };
 use crate::runner::config::RunnerPluginConfig;
 
@@ -34,6 +35,22 @@ impl PluginManager {
         config: RunnerPluginConfig,
         factory: Arc<dyn PluginProcessFactory>,
     ) -> Result<Self, String> {
+        Self::with_dependencies(
+            app_name,
+            permissions,
+            config,
+            factory,
+            Arc::new(NativePluginAccessPicker),
+        )
+    }
+
+    pub(super) fn with_dependencies(
+        app_name: String,
+        permissions: &[String],
+        config: RunnerPluginConfig,
+        factory: Arc<dyn PluginProcessFactory>,
+        access_picker: Arc<dyn super::PluginAccessPicker>,
+    ) -> Result<Self, String> {
         let app_permissions = permissions
             .iter()
             .filter_map(|name| Permission::from_str_name(name))
@@ -45,6 +62,7 @@ impl PluginManager {
                 app_permissions,
                 app_data_root,
                 factory,
+                access_picker,
                 registry: Mutex::new(PluginRegistry::new()),
             }),
         };
@@ -211,6 +229,8 @@ impl PluginManager {
             process: None,
             pending_requests: 0,
             registrations: PluginRegistrations::default(),
+            delegated_grants: HashSet::new(),
+            storage_reconciled: false,
             spawn_lock: Arc::new(Mutex::new(())),
         })
     }

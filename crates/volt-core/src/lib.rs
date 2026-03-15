@@ -10,6 +10,7 @@ pub mod ipc;
 pub mod menu;
 pub mod notification;
 pub mod permissions;
+pub mod plugin_grant_registry;
 pub mod security;
 pub mod shell;
 pub mod tray;
@@ -37,3 +38,20 @@ pub use tray::TrayConfig;
 pub use updater::{UpdateConfig, UpdateError, UpdateInfo};
 pub use webview::WebViewConfig;
 pub use window::{WindowConfig, WindowHandle};
+
+#[cfg(test)]
+pub(crate) mod test_support {
+    use std::sync::{Mutex, MutexGuard};
+
+    /// Shared guard for all tests that touch global grant state (`grant_store`,
+    /// `plugin_grant_registry`). Both modules use process-wide statics, so
+    /// parallel tests must serialize through this lock.
+    static GRANT_TEST_GUARD: Mutex<()> = Mutex::new(());
+
+    pub fn lock_grant_state() -> MutexGuard<'static, ()> {
+        let guard = GRANT_TEST_GUARD.lock().expect("grant test guard");
+        crate::plugin_grant_registry::clear_delegations();
+        crate::grant_store::clear_grants();
+        guard
+    }
+}

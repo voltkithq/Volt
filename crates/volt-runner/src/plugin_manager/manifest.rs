@@ -25,7 +25,7 @@ pub(super) fn parse_plugin_manifest(
     if !is_valid_reverse_domain(&id) {
         return Err("manifest id must be in reverse-domain format".to_string());
     }
-    let _name = required_string_field(object, "name")?;
+    let name = required_string_field(object, "name")?;
     let version = required_string_field(object, "version")?;
     Version::parse(&version)
         .map_err(|error| format!("manifest version must be valid semver: {error}"))?;
@@ -99,10 +99,13 @@ pub(super) fn parse_plugin_manifest(
     if let Some(signature) = object.get("signature") {
         validate_signature(signature)?;
     }
+    let prefetch_on = parse_prefetch_on(object)?;
 
     Ok(PluginManifest {
         id,
+        name,
         capabilities,
+        prefetch_on,
         backend_entry: backend_path,
         raw_manifest: value,
     })
@@ -192,6 +195,28 @@ fn validate_signature(value: &Value) -> Result<(), String> {
     required_string_field(object, "value")
         .map_err(|_| "manifest signature.value must be a non-empty string".to_string())?;
     Ok(())
+}
+
+fn parse_prefetch_on(object: &serde_json::Map<String, Value>) -> Result<Vec<String>, String> {
+    let Some(prefetch_on) = object.get("prefetchOn") else {
+        return Ok(Vec::new());
+    };
+    let Some(prefetch_on) = prefetch_on.as_array() else {
+        return Err("manifest prefetchOn must be an array".to_string());
+    };
+
+    prefetch_on
+        .iter()
+        .enumerate()
+        .map(|(index, value)| {
+            value
+                .as_str()
+                .map(str::trim)
+                .filter(|surface| !surface.is_empty())
+                .map(str::to_string)
+                .ok_or_else(|| format!("manifest prefetchOn[{index}] must be a non-empty string"))
+        })
+        .collect()
 }
 
 fn required_string_field(

@@ -1,14 +1,31 @@
 use std::sync::Arc;
 
+use crate::plugin_manager::runtime::PluginStartupMode;
 use crate::plugin_manager::{
     HostIpcSettings, PLUGIN_NOT_AVAILABLE_CODE, PLUGIN_RUNTIME_ERROR_CODE, PluginBootstrapConfig,
     PluginManager, PluginProcessHandle, PluginRuntimeError, PluginState, now_ms,
 };
 
 impl PluginManager {
+    #[allow(dead_code)]
+    pub(in crate::plugin_manager) fn ensure_plugin_loaded(
+        &self,
+        plugin_id: &str,
+    ) -> Result<Arc<dyn PluginProcessHandle>, PluginRuntimeError> {
+        self.ensure_plugin_started(plugin_id, PluginStartupMode::LoadOnly)
+    }
+
     pub(in crate::plugin_manager) fn ensure_plugin_running(
         &self,
         plugin_id: &str,
+    ) -> Result<Arc<dyn PluginProcessHandle>, PluginRuntimeError> {
+        self.ensure_plugin_started(plugin_id, PluginStartupMode::Activate)
+    }
+
+    fn ensure_plugin_started(
+        &self,
+        plugin_id: &str,
+        mode: PluginStartupMode,
     ) -> Result<Arc<dyn PluginProcessHandle>, PluginRuntimeError> {
         let spawn_lock = {
             let registry = self.inner.registry.lock().map_err(|_| PluginRuntimeError {
@@ -29,12 +46,16 @@ impl PluginManager {
             message: format!("spawn lock for plugin '{plugin_id}' is poisoned"),
         })?;
 
-        if let Some(process) = self.current_process(plugin_id) {
-            self.record_activity(plugin_id);
+        if let Some((process, state)) = self.current_process(plugin_id) {
+            if state == PluginState::Loaded && mode == PluginStartupMode::Activate {
+                self.activate_loaded_process(plugin_id, process.clone())?;
+            } else if state != PluginState::Loaded {
+                self.record_activity(plugin_id);
+            }
             return Ok(process);
         }
 
-        let bootstrap = self.prepare_spawn(plugin_id)?;
+        let bootstrap = self.prepare_spawn(plugin_id, mode)?;
         let process = self.inner.factory.spawn(&bootstrap)?;
         let manager = self.clone();
         let plugin_id_for_exit = plugin_id.to_string();
@@ -63,7 +84,19 @@ impl PluginManager {
             });
         }
         self.transition_plugin(plugin_id, PluginState::Loaded)?;
+        if mode == PluginStartupMode::LoadOnly {
+            return Ok(process);
+        }
 
+        self.activate_loaded_process(plugin_id, process.clone())?;
+        Ok(process)
+    }
+
+    fn activate_loaded_process(
+        &self,
+        plugin_id: &str,
+        process: Arc<dyn PluginProcessHandle>,
+    ) -> Result<(), PluginRuntimeError> {
         if let Err(error) = process.activate(self.activation_timeout()) {
             self.fail_plugin(
                 plugin_id,
@@ -83,25 +116,31 @@ impl PluginManager {
         self.record_activity(plugin_id);
         self.start_watchdog(plugin_id.to_string(), process.clone());
 
-        Ok(process)
+        Ok(())
     }
 
-    fn current_process(&self, plugin_id: &str) -> Option<Arc<dyn PluginProcessHandle>> {
+    fn current_process(
+        &self,
+        plugin_id: &str,
+    ) -> Option<(Arc<dyn PluginProcessHandle>, PluginState)> {
         let Ok(registry) = self.inner.registry.lock() else {
             return None;
         };
         let record = registry.plugins.get(plugin_id)?;
-        if matches!(
-            record.lifecycle.current_state(),
-            PluginState::Active | PluginState::Running
-        ) {
-            record.process.clone()
-        } else {
-            None
-        }
+        let state = record.lifecycle.current_state();
+        matches!(
+            state,
+            PluginState::Loaded | PluginState::Active | PluginState::Running
+        )
+        .then(|| record.process.clone().map(|process| (process, state)))
+        .flatten()
     }
 
-    fn prepare_spawn(&self, plugin_id: &str) -> Result<PluginBootstrapConfig, PluginRuntimeError> {
+    fn prepare_spawn(
+        &self,
+        plugin_id: &str,
+        mode: PluginStartupMode,
+    ) -> Result<PluginBootstrapConfig, PluginRuntimeError> {
         let mut registry = self.inner.registry.lock().map_err(|_| PluginRuntimeError {
             code: PLUGIN_RUNTIME_ERROR_CODE.to_string(),
             message: "plugin registry is unavailable".to_string(),
@@ -124,6 +163,7 @@ impl PluginManager {
                         message,
                     })?;
             }
+            PluginState::Loaded if mode == PluginStartupMode::Activate => {}
             PluginState::Active | PluginState::Running => {}
             PluginState::Disabled => {
                 return Err(PluginRuntimeError {
@@ -158,7 +198,18 @@ impl PluginManager {
             manifest: record.manifest.raw_manifest.clone(),
             capabilities: record.effective_capabilities.iter().cloned().collect(),
             data_root: data_root.display().to_string(),
-            delegated_grants: Vec::new(),
+            delegated_grants: record
+                .delegated_grants
+                .iter()
+                .filter_map(|grant_id| {
+                    volt_core::grant_store::resolve_grant(grant_id)
+                        .ok()
+                        .map(|path| crate::plugin_manager::DelegatedGrant {
+                            grant_id: grant_id.clone(),
+                            path: path.display().to_string(),
+                        })
+                })
+                .collect(),
             host_ipc_settings: HostIpcSettings {
                 heartbeat_interval_ms: self.inner.config.limits.heartbeat_interval_ms,
                 heartbeat_timeout_ms: self.inner.config.limits.heartbeat_timeout_ms,

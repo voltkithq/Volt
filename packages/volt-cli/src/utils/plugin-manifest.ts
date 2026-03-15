@@ -45,6 +45,7 @@ export interface PluginManifest {
   };
   backend: string;
   capabilities: KnownCapability[];
+  prefetchOn?: string[];
   contributes?: PluginContributes;
   signature?: PluginSignature;
 }
@@ -167,6 +168,23 @@ export function validatePluginManifest(input: unknown): ManifestValidationResult
           });
         }
         seen.add(cap);
+      }
+    }
+  }
+
+  // prefetchOn (optional)
+  if (input.prefetchOn !== undefined) {
+    if (!Array.isArray(input.prefetchOn)) {
+      errors.push({ field: 'prefetchOn', message: 'Must be an array if present' });
+    } else {
+      for (let i = 0; i < input.prefetchOn.length; i++) {
+        const surface = input.prefetchOn[i];
+        if (typeof surface !== 'string' || surface.trim().length === 0) {
+          errors.push({
+            field: `prefetchOn[${i}]`,
+            message: 'Must be a non-empty string',
+          });
+        }
       }
     }
   }

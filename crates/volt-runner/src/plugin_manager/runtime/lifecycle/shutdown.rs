@@ -2,7 +2,7 @@ use crate::plugin_manager::{PluginManager, PluginState};
 
 impl PluginManager {
     pub(in crate::plugin_manager) fn deactivate_plugin(&self, plugin_id: &str) {
-        let process = {
+        let (process, state) = {
             let Ok(mut registry) = self.inner.registry.lock() else {
                 return;
             };
@@ -11,21 +11,29 @@ impl PluginManager {
             };
             if !matches!(
                 record.lifecycle.current_state(),
-                PluginState::Active | PluginState::Running | PluginState::Failed
+                PluginState::Loaded
+                    | PluginState::Active
+                    | PluginState::Running
+                    | PluginState::Failed
             ) {
                 record.process = None;
                 return;
             }
-            if record.lifecycle.current_state() != PluginState::Failed {
+            let state = record.lifecycle.current_state();
+            if matches!(state, PluginState::Active | PluginState::Running) {
                 let _ = record.lifecycle.transition(PluginState::Deactivating);
             }
-            record.process.clone()
+            (record.process.clone(), state)
         };
 
         let Some(process) = process else {
             return;
         };
-        let result = process.deactivate(self.deactivation_timeout());
+        let result = if state == PluginState::Loaded {
+            process.kill()
+        } else {
+            process.deactivate(self.deactivation_timeout())
+        };
         if let Ok(mut registry) = self.inner.registry.lock() {
             crate::plugin_manager::host_api_helpers::clear_plugin_registrations_locked(
                 &mut registry,
@@ -36,7 +44,12 @@ impl PluginManager {
                 record.pending_requests = 0;
                 match result {
                     Ok(()) => {
-                        let _ = record.lifecycle.transition(PluginState::Terminated);
+                        if state == PluginState::Loaded {
+                            record.metrics.pid = None;
+                            let _ = record.lifecycle.transition(PluginState::Terminated);
+                        } else {
+                            let _ = record.lifecycle.transition(PluginState::Terminated);
+                        }
                     }
                     Err(error) => {
                         record.lifecycle.fail(

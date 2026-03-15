@@ -14,7 +14,7 @@ use crate::plugin_manager::{
 const PLUGIN_HOST_PATH_ENV: &str = "VOLT_PLUGIN_HOST_PATH";
 
 #[derive(Default)]
-pub(in crate::plugin_manager) struct RealPluginProcessFactory;
+pub(crate) struct RealPluginProcessFactory;
 
 impl PluginProcessFactory for RealPluginProcessFactory {
     fn spawn(

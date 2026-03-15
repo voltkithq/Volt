@@ -4,12 +4,14 @@ use std::io::{self, BufReader};
 
 use serde_json::Value;
 
+use crate::config::DelegatedGrant;
 use crate::config::PluginConfig;
 use crate::ipc::{IpcMessage, MessageType, read_message, write_message};
 
 struct RuntimeState {
     plugin_id: String,
     manifest: Value,
+    delegated_grants: Vec<DelegatedGrant>,
     transport: Transport,
 }
 
@@ -38,6 +40,7 @@ pub fn configure_stdio(config: &PluginConfig) {
         *state.borrow_mut() = Some(RuntimeState {
             plugin_id: config.plugin_id.clone(),
             manifest: config.manifest.clone(),
+            delegated_grants: config.delegated_grants.clone(),
             transport: Transport::StdIo {
                 reader: BufReader::new(std::io::stdin()),
                 writer: std::io::stdout(),
@@ -64,6 +67,16 @@ pub fn plugin_id() -> Result<String, String> {
             .borrow()
             .as_ref()
             .map(|runtime| runtime.plugin_id.clone())
+            .ok_or_else(|| "plugin runtime is not configured".to_string())
+    })
+}
+
+pub fn delegated_grants() -> Result<Vec<DelegatedGrant>, String> {
+    STATE.with(|state| {
+        state
+            .borrow()
+            .as_ref()
+            .map(|runtime| runtime.delegated_grants.clone())
             .ok_or_else(|| "plugin runtime is not configured".to_string())
     })
 }
@@ -234,6 +247,7 @@ pub(crate) fn configure_mock(config: &PluginConfig, inbound: Vec<IpcMessage>) {
         *state.borrow_mut() = Some(RuntimeState {
             plugin_id: config.plugin_id.clone(),
             manifest: config.manifest.clone(),
+            delegated_grants: config.delegated_grants.clone(),
             transport: Transport::Mock {
                 inbound: inbound.into(),
                 outbound: Vec::new(),
