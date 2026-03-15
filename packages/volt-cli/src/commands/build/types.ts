@@ -29,7 +29,15 @@ export interface ResolvedRuntimeArtifact {
   sourcePath: string;
 }
 
-export type RemovePathFn = (path: string, options?: { force?: boolean; recursive?: boolean }) => void;
+export type RemovePathFn = (
+  path: string,
+  options?: { force?: boolean; recursive?: boolean },
+) => void;
 export type MkdirPathFn = (path: string, options?: { recursive?: boolean }) => void;
 
-export const ARTIFACT_KIND_PRIORITY: readonly CargoArtifactKind[] = ['bin', 'cdylib', 'dylib', 'staticlib'];
+export const ARTIFACT_KIND_PRIORITY: readonly CargoArtifactKind[] = [
+  'bin',
+  'cdylib',
+  'dylib',
+  'staticlib',
+];

@@ -1,7 +1,15 @@
-import type { CargoArtifactKind, CargoMetadataTarget, RuntimeArtifactCandidate, BuildPlatform } from './types.js';
+import type {
+  CargoArtifactKind,
+  CargoMetadataTarget,
+  RuntimeArtifactCandidate,
+  BuildPlatform,
+} from './types.js';
 import { ARTIFACT_KIND_PRIORITY } from './types.js';
 
-export function inferBuildPlatform(target?: string, fallback: NodeJS.Platform = process.platform): BuildPlatform {
+export function inferBuildPlatform(
+  target?: string,
+  fallback: NodeJS.Platform = process.platform,
+): BuildPlatform {
   if (!target) {
     return normalizePlatform(fallback);
   }

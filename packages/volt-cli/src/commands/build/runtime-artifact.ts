@@ -23,7 +23,9 @@ export function readCargoMetadata(cwd: string): CargoMetadata | null {
   }
 }
 
-export function fallbackRuntimeArtifactCandidates(platform: BuildPlatform): RuntimeArtifactCandidate[] {
+export function fallbackRuntimeArtifactCandidates(
+  platform: BuildPlatform,
+): RuntimeArtifactCandidate[] {
   const fallbackTargets: CargoMetadataTarget[] = [
     { name: 'volt-runner', kind: ['bin'] },
     { name: 'volt_runner', kind: ['bin'] },
