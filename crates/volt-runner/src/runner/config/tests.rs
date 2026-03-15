@@ -14,6 +14,7 @@ fn config_with_app_name(name: &str) -> RunnerConfig {
         runtime_pool_size: None,
         updater_telemetry_enabled: false,
         updater_telemetry_sink: None,
+        plugins: RunnerPluginConfig::default(),
         window: WindowConfig::default(),
         webview: WebViewConfig::default(),
     }
@@ -51,6 +52,11 @@ fn config_defaults_are_applied_when_fields_are_missing() {
     assert!(parsed.runtime_pool_size.is_none());
     assert!(!parsed.updater_telemetry_enabled);
     assert!(parsed.updater_telemetry_sink.is_none());
+    assert!(parsed.plugins.enabled.is_empty());
+    assert!(parsed.plugins.grants.is_empty());
+    assert!(parsed.plugins.plugin_dirs.is_empty());
+    assert_eq!(parsed.plugins.limits, RunnerPluginLimits::default());
+    assert_eq!(parsed.plugins.spawning, RunnerPluginSpawning::default());
 
     match parsed.webview.source {
         WebViewSource::Url(url) => assert_eq!(url, DEFAULT_WEBVIEW_URL),
@@ -147,4 +153,113 @@ fn app_name_override_ignores_empty_values() {
 
     apply_app_name_override(&mut config, Ok("   ".to_string())).expect("no override");
     assert_eq!(config.app_name, "Base");
+}
+
+#[test]
+fn config_parses_full_plugin_settings() {
+    let parsed = parsing::parse_runner_config_bytes(
+        br#"{
+            "plugins": {
+                "enabled": ["acme.search"],
+                "grants": {
+                    "acme.search": ["fs", "http"]
+                },
+                "pluginDirs": ["./plugins"],
+                "limits": {
+                    "activationTimeoutMs": 11000,
+                    "deactivationTimeoutMs": 6000,
+                    "callTimeoutMs": 40000,
+                    "maxPlugins": 16,
+                    "heartbeatIntervalMs": 1500,
+                    "heartbeatTimeoutMs": 900
+                },
+                "spawning": {
+                    "strategy": "lazy",
+                    "idleTimeoutMs": 600000,
+                    "preSpawn": ["acme.search"]
+                }
+            }
+        }"#,
+    )
+    .expect("plugin config");
+
+    assert_eq!(parsed.plugins.enabled, vec!["acme.search".to_string()]);
+    assert_eq!(
+        parsed.plugins.grants.get("acme.search"),
+        Some(&vec!["fs".to_string(), "http".to_string()])
+    );
+    assert_eq!(parsed.plugins.plugin_dirs, vec!["./plugins".to_string()]);
+    assert_eq!(parsed.plugins.limits.activation_timeout_ms, 11_000);
+    assert_eq!(parsed.plugins.limits.deactivation_timeout_ms, 6_000);
+    assert_eq!(parsed.plugins.limits.call_timeout_ms, 40_000);
+    assert_eq!(parsed.plugins.limits.max_plugins, 16);
+    assert_eq!(parsed.plugins.limits.heartbeat_interval_ms, 1_500);
+    assert_eq!(parsed.plugins.limits.heartbeat_timeout_ms, 900);
+    assert_eq!(
+        parsed.plugins.spawning.strategy,
+        RunnerPluginSpawningStrategy::Lazy
+    );
+    assert_eq!(parsed.plugins.spawning.idle_timeout_ms, 600_000);
+    assert_eq!(
+        parsed.plugins.spawning.pre_spawn,
+        vec!["acme.search".to_string()]
+    );
+}
+
+#[test]
+fn config_plugin_settings_defaults_when_optional_fields_are_missing() {
+    let parsed = parsing::parse_runner_config_bytes(
+        br#"{
+            "plugins": {
+                "enabled": ["acme.search"]
+            }
+        }"#,
+    )
+    .expect("plugin config");
+
+    assert_eq!(parsed.plugins.enabled, vec!["acme.search".to_string()]);
+    assert!(parsed.plugins.grants.is_empty());
+    assert!(parsed.plugins.plugin_dirs.is_empty());
+    assert_eq!(parsed.plugins.limits, RunnerPluginLimits::default());
+    assert_eq!(parsed.plugins.spawning, RunnerPluginSpawning::default());
+}
+
+#[test]
+fn invalid_plugin_config_values_are_rejected() {
+    let err = parsing::parse_runner_config_bytes(
+        br#"{
+            "plugins": {
+                "enabled": [""],
+                "limits": {
+                    "maxPlugins": 0
+                }
+            }
+        }"#,
+    )
+    .expect_err("invalid plugin config");
+    assert!(matches!(err, RunnerError::Config(_)));
+
+    let err = parsing::parse_runner_config_bytes(
+        br#"{
+            "plugins": {
+                "grants": {
+                    "acme.search": ["wat"]
+                }
+            }
+        }"#,
+    )
+    .expect_err("invalid plugin grant");
+    assert!(matches!(err, RunnerError::Config(_)));
+
+    let err = parsing::parse_runner_config_bytes(
+        br#"{
+            "plugins": {
+                "spawning": {
+                    "strategy": "sometimes"
+                }
+            }
+        }"#,
+    )
+    .expect_err("invalid plugin strategy");
+    assert!(matches!(err, RunnerError::Config(_)));
 }
