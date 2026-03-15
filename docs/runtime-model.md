@@ -94,6 +94,16 @@ structurally consistent after create/close/quit transitions.
   - failed command sends
 - Dropped callback dispatch counter in N-API layer
 
+## Plugin Startup Benchmark
+
+- Session 6 measured plugin cold-start before adding trust groups or process pooling.
+- The benchmark uses the real release `volt-plugin-host` binary plus the framed stdio protocol and activation path.
+- Current result on the development machine:
+  - spawn -> ready: 15.48 ms median, 16.25 ms p95
+  - spawn -> first command response: 17.42 ms median, 18.08 ms p95
+- Those numbers are far below the Session 6 decision gate of 200 ms and 500 ms, so shared-process trust groups remain deferred instead of becoming a co-equal execution model.
+- Re-run with `cargo build -p volt-plugin-host --release` and `node scripts/ci/plugin-startup-bench.mjs`.
+
 
 
 ## Known Architectural Limits in v0.1
