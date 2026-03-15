@@ -6,20 +6,30 @@ impl PluginManager {
             let Ok(mut registry) = self.inner.registry.lock() else {
                 return;
             };
-            let Some(record) = registry.plugins.get_mut(plugin_id) else {
+            let Some(state) = registry
+                .plugins
+                .get(plugin_id)
+                .map(|record| record.lifecycle.current_state())
+            else {
                 return;
             };
             if !matches!(
-                record.lifecycle.current_state(),
+                state,
                 PluginState::Loaded
                     | PluginState::Active
                     | PluginState::Running
                     | PluginState::Failed
             ) {
-                record.process = None;
+                crate::plugin_manager::host_api_helpers::clear_plugin_registrations_locked(
+                    &mut registry,
+                    plugin_id,
+                );
+                if let Some(record) = registry.plugins.get_mut(plugin_id) {
+                    record.process = None;
+                }
                 return;
             }
-            let state = record.lifecycle.current_state();
+            let record = registry.plugins.get_mut(plugin_id).expect("checked above");
             if matches!(state, PluginState::Active | PluginState::Running) {
                 let _ = record.lifecycle.transition(PluginState::Deactivating);
             }

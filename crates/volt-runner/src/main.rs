@@ -35,6 +35,12 @@ fn run() -> Result<(), RunnerError> {
         .map_err(|error| RunnerError::App(format!("updater startup recovery failed: {error}")))?;
     let bundle = load_asset_bundle()?;
     let backend_bundle_source = load_backend_bundle_source()?;
+    let plugin_manager = plugin_manager::PluginManager::new(
+        config.app_name.clone(),
+        &config.permissions,
+        config.plugins.clone(),
+    )
+    .map_err(|error| RunnerError::App(format!("failed to initialize plugin manager: {error}")))?;
     let pool_size = config
         .runtime_pool_size
         .unwrap_or_else(js_runtime_pool::JsRuntimePool::default_pool_size);
@@ -44,6 +50,7 @@ fn run() -> Result<(), RunnerError> {
             fs_base_dir: resolve_fs_scope_dir(&config)?,
             permissions: config.permissions.clone(),
             app_name: config.app_name.clone(),
+            plugin_manager: Some(plugin_manager.clone()),
             secure_storage_backend: None,
             updater_telemetry_enabled: config.updater_telemetry_enabled,
             updater_telemetry_sink: config.updater_telemetry_sink.clone(),
@@ -59,12 +66,6 @@ fn run() -> Result<(), RunnerError> {
         .load_backend_bundle(&backend_bundle_source)
         .map_err(|err| RunnerError::App(format!("failed to load backend bundle: {err}")))?;
     let runtime_client = js_runtime.client();
-    let plugin_manager = plugin_manager::PluginManager::new(
-        config.app_name.clone(),
-        &config.permissions,
-        config.plugins.clone(),
-    )
-    .map_err(|error| RunnerError::App(format!("failed to initialize plugin manager: {error}")))?;
     let ipc_bridge = ipc_bridge::IpcBridge::new_with_plugin_manager(
         runtime_client.clone(),
         Some(plugin_manager.clone()),

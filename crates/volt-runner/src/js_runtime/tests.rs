@@ -6,6 +6,8 @@ use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use volt_core::ipc::{IPC_HANDLER_ERROR_CODE, IPC_HANDLER_TIMEOUT_CODE, IPC_MAX_REQUEST_BYTES};
 
+use crate::plugin_manager::PluginManager;
+
 mod gc_scheduler;
 mod http_module;
 mod native_ipc;
@@ -26,10 +28,19 @@ fn unique_temp_dir(prefix: &str) -> PathBuf {
 }
 
 fn runtime_with_permissions(fs_base_dir: PathBuf, permissions: &[&str]) -> JsRuntimeManager {
+    runtime_with_plugin_manager(fs_base_dir, permissions, None)
+}
+
+pub(super) fn runtime_with_plugin_manager(
+    fs_base_dir: PathBuf,
+    permissions: &[&str],
+    plugin_manager: Option<PluginManager>,
+) -> JsRuntimeManager {
     JsRuntimeManager::start_with_options(JsRuntimeOptions {
         fs_base_dir,
         permissions: permissions.iter().map(|name| (*name).to_string()).collect(),
         app_name: "Volt Test".to_string(),
+        plugin_manager,
         secure_storage_backend: None,
         updater_telemetry_enabled: false,
         updater_telemetry_sink: None,

@@ -6,6 +6,8 @@ use std::time::Duration;
 use serde_json::Value as JsonValue;
 use volt_core::ipc::{IPC_HANDLER_TIMEOUT_CODE, IpcResponse};
 
+use crate::plugin_manager::PluginManager;
+
 mod bootstrap;
 mod eval_ops;
 mod ipc;
@@ -40,11 +42,12 @@ pub struct JsRuntimeManager {
     worker_thread: Option<JoinHandle<()>>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct JsRuntimeOptions {
     pub fs_base_dir: PathBuf,
     pub permissions: Vec<String>,
     pub app_name: String,
+    pub plugin_manager: Option<PluginManager>,
     pub secure_storage_backend: Option<String>,
     pub updater_telemetry_enabled: bool,
     pub updater_telemetry_sink: Option<String>,
@@ -56,6 +59,7 @@ impl Default for JsRuntimeOptions {
             fs_base_dir: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
             permissions: Vec::new(),
             app_name: "Volt App".to_string(),
+            plugin_manager: None,
             secure_storage_backend: None,
             updater_telemetry_enabled: false,
             updater_telemetry_sink: None,

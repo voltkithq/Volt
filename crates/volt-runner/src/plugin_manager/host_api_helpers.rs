@@ -110,9 +110,9 @@ pub(super) fn clear_plugin_registrations_locked(
             .ipc_handlers
             .remove(&namespaced_ipc(plugin_id, &channel));
     }
-    for grant_id in std::mem::take(&mut record.delegated_grants) {
-        volt_core::plugin_grant_registry::revoke_grant(plugin_id, &grant_id);
-        let _ = volt_core::grant_store::revoke_grant(&grant_id);
+    if !record.delegated_grants.is_empty() {
+        volt_core::plugin_grant_registry::revoke_all_grants(plugin_id);
+        record.delegated_grants.clear();
     }
     record.storage_reconciled = false;
 }

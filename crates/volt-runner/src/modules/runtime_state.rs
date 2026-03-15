@@ -7,6 +7,7 @@ use volt_core::permissions::{CapabilityGuard, Permission};
 
 use super::runtime_values::format_js_error;
 use super::secure_storage;
+use crate::plugin_manager::PluginManager;
 
 #[derive(Debug, Clone)]
 pub struct UpdaterTelemetryConfig {
@@ -14,11 +15,12 @@ pub struct UpdaterTelemetryConfig {
     pub sink: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ModuleConfig {
     pub fs_base_dir: PathBuf,
     pub permissions: Vec<String>,
     pub app_name: String,
+    pub plugin_manager: Option<PluginManager>,
     pub secure_storage_backend: Option<String>,
     pub updater_telemetry_enabled: bool,
     pub updater_telemetry_sink: Option<String>,
@@ -31,6 +33,7 @@ impl Default for ModuleConfig {
             fs_base_dir,
             permissions: Vec::new(),
             app_name: "Volt App".to_string(),
+            plugin_manager: None,
             secure_storage_backend: None,
             updater_telemetry_enabled: false,
             updater_telemetry_sink: None,
@@ -41,6 +44,7 @@ impl Default for ModuleConfig {
 struct ModuleState {
     fs_base_dir: PathBuf,
     app_name: String,
+    plugin_manager: Option<PluginManager>,
     permission_guard: CapabilityGuard,
     secure_storage_adapter: Arc<dyn secure_storage::SecureStorageAdapter>,
     updater_telemetry: UpdaterTelemetryConfig,
@@ -61,6 +65,7 @@ impl ModuleState {
         Self {
             fs_base_dir: config.fs_base_dir,
             app_name: config.app_name,
+            plugin_manager: config.plugin_manager,
             permission_guard: CapabilityGuard::from_names(&config.permissions),
             secure_storage_adapter,
             updater_telemetry: UpdaterTelemetryConfig {
@@ -89,6 +94,16 @@ pub fn fs_base_dir() -> Result<PathBuf, String> {
 
 pub fn app_name() -> Result<String, String> {
     MODULE_STATE.with(|state| Ok(state.borrow().app_name.clone()))
+}
+
+pub fn plugin_manager() -> Result<PluginManager, String> {
+    MODULE_STATE.with(|state| {
+        state
+            .borrow()
+            .plugin_manager
+            .clone()
+            .ok_or_else(|| "plugin manager is unavailable".to_string())
+    })
 }
 
 pub fn secure_storage_adapter() -> Result<Arc<dyn secure_storage::SecureStorageAdapter>, String> {

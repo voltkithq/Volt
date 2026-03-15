@@ -50,6 +50,7 @@ fn fs_module_rejects_without_permission() {
         fs_base_dir: fs_base_dir.clone(),
         permissions: Vec::new(),
         app_name: "Volt Test".to_string(),
+        plugin_manager: None,
         secure_storage_backend: None,
         updater_telemetry_enabled: false,
         updater_telemetry_sink: None,
