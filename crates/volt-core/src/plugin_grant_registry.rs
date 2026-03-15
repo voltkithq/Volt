@@ -87,21 +87,18 @@ mod tests {
     use std::path::PathBuf;
 
     use super::*;
+    use crate::test_support::lock_grant_state;
 
     #[test]
     fn delegate_grant_requires_existing_grant() {
-        clear_delegations();
-        grant_store::clear_grants();
-
+        let _guard = lock_grant_state();
         let error = delegate_grant("acme.search", "missing").expect_err("invalid grant");
         assert_eq!(error, PluginGrantError::InvalidGrant);
     }
 
     #[test]
     fn delegate_grant_tracks_plugin_ownership() {
-        clear_delegations();
-        grant_store::clear_grants();
-
+        let _guard = lock_grant_state();
         let grant_id = grant_store::create_grant(std::env::temp_dir()).expect("grant");
         delegate_grant("acme.search", &grant_id).expect("delegate");
 
@@ -112,9 +109,7 @@ mod tests {
 
     #[test]
     fn duplicate_delegation_is_rejected() {
-        clear_delegations();
-        grant_store::clear_grants();
-
+        let _guard = lock_grant_state();
         let temp = std::env::temp_dir().join("volt-plugin-grants");
         std::fs::create_dir_all(&temp).expect("temp");
         let grant_id = grant_store::create_grant(PathBuf::from(&temp)).expect("grant");
