@@ -26,23 +26,27 @@ impl PluginManager {
             return;
         };
         let result = process.deactivate(self.deactivation_timeout());
-        if let Ok(mut registry) = self.inner.registry.lock()
-            && let Some(record) = registry.plugins.get_mut(plugin_id)
-        {
-            record.process = None;
-            record.pending_requests = 0;
-            match result {
-                Ok(()) => {
-                    let _ = record.lifecycle.transition(PluginState::Terminated);
-                }
-                Err(error) => {
-                    record.lifecycle.fail(
-                        plugin_id,
-                        &error.code,
-                        error.message,
-                        None,
-                        process.stderr_snapshot(),
-                    );
+        if let Ok(mut registry) = self.inner.registry.lock() {
+            crate::plugin_manager::host_api_helpers::clear_plugin_registrations_locked(
+                &mut registry,
+                plugin_id,
+            );
+            if let Some(record) = registry.plugins.get_mut(plugin_id) {
+                record.process = None;
+                record.pending_requests = 0;
+                match result {
+                    Ok(()) => {
+                        let _ = record.lifecycle.transition(PluginState::Terminated);
+                    }
+                    Err(error) => {
+                        record.lifecycle.fail(
+                            plugin_id,
+                            &error.code,
+                            error.message,
+                            None,
+                            process.stderr_snapshot(),
+                        );
+                    }
                 }
             }
         }

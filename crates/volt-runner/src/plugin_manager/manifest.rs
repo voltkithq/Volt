@@ -100,7 +100,12 @@ pub(super) fn parse_plugin_manifest(
         validate_signature(signature)?;
     }
 
-    Ok(PluginManifest { id, capabilities })
+    Ok(PluginManifest {
+        id,
+        capabilities,
+        backend_entry: backend_path,
+        raw_manifest: value,
+    })
 }
 
 pub(super) fn compute_effective_capabilities(

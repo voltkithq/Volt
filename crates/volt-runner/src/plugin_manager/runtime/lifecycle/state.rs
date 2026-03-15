@@ -67,14 +67,18 @@ impl PluginManager {
         details: Option<Value>,
         stderr: Option<String>,
     ) {
-        if let Ok(mut registry) = self.inner.registry.lock()
-            && let Some(record) = registry.plugins.get_mut(plugin_id)
-        {
-            record.process = None;
-            record.pending_requests = 0;
-            record
-                .lifecycle
-                .fail(plugin_id, code, message, details, stderr);
+        if let Ok(mut registry) = self.inner.registry.lock() {
+            crate::plugin_manager::host_api_helpers::clear_plugin_registrations_locked(
+                &mut registry,
+                plugin_id,
+            );
+            if let Some(record) = registry.plugins.get_mut(plugin_id) {
+                record.process = None;
+                record.pending_requests = 0;
+                record
+                    .lifecycle
+                    .fail(plugin_id, code, message, details, stderr);
+            }
         }
     }
 

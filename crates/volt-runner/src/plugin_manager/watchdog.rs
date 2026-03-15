@@ -9,26 +9,30 @@ use super::{
 
 impl PluginManager {
     pub(super) fn handle_process_exit(&self, plugin_id: &str, exit: ProcessExitInfo) {
-        if let Ok(mut registry) = self.inner.registry.lock()
-            && let Some(record) = registry.plugins.get_mut(plugin_id)
-        {
-            record.process = None;
-            record.pending_requests = 0;
-            match record.lifecycle.current_state() {
-                PluginState::Deactivating | PluginState::Terminated | PluginState::Disabled => {
-                    let _ = record.lifecycle.transition(PluginState::Terminated);
-                }
-                PluginState::Failed => {}
-                _ => record.lifecycle.fail(
-                    plugin_id,
-                    PLUGIN_RUNTIME_ERROR_CODE,
-                    format!(
-                        "plugin process exited unexpectedly with code {:?}",
-                        exit.code
+        if let Ok(mut registry) = self.inner.registry.lock() {
+            crate::plugin_manager::host_api_helpers::clear_plugin_registrations_locked(
+                &mut registry,
+                plugin_id,
+            );
+            if let Some(record) = registry.plugins.get_mut(plugin_id) {
+                record.process = None;
+                record.pending_requests = 0;
+                match record.lifecycle.current_state() {
+                    PluginState::Deactivating | PluginState::Terminated | PluginState::Disabled => {
+                        let _ = record.lifecycle.transition(PluginState::Terminated);
+                    }
+                    PluginState::Failed => {}
+                    _ => record.lifecycle.fail(
+                        plugin_id,
+                        PLUGIN_RUNTIME_ERROR_CODE,
+                        format!(
+                            "plugin process exited unexpectedly with code {:?}",
+                            exit.code
+                        ),
+                        Some(serde_json::json!({ "exitCode": exit.code })),
+                        None,
                     ),
-                    Some(serde_json::json!({ "exitCode": exit.code })),
-                    None,
-                ),
+                }
             }
         }
     }

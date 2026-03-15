@@ -89,6 +89,8 @@ fn run() -> Result<(), RunnerError> {
             ipc_bridge.handle_message(js_window_id.clone(), raw.clone());
         }
         AppEvent::MenuEvent { menu_id } => {
+            plugin_manager_for_events
+                .dispatch_host_event("menu:click", json!({ "menuId": menu_id.clone() }));
             if let Err(error) =
                 runtime_client.dispatch_native_event("menu:click", json!({ "menuId": menu_id }))
             {
@@ -96,6 +98,7 @@ fn run() -> Result<(), RunnerError> {
             }
         }
         AppEvent::ShortcutTriggered { id } => {
+            plugin_manager_for_events.dispatch_host_event("shortcut:triggered", json!({ "id": id }));
             if let Err(error) =
                 runtime_client.dispatch_native_event("shortcut:triggered", json!({ "id": id }))
             {
@@ -103,6 +106,8 @@ fn run() -> Result<(), RunnerError> {
             }
         }
         AppEvent::TrayEvent { tray_id } => {
+            plugin_manager_for_events
+                .dispatch_host_event("tray:click", json!({ "trayId": tray_id.clone() }));
             if let Err(error) =
                 runtime_client.dispatch_native_event("tray:click", json!({ "trayId": tray_id }))
             {

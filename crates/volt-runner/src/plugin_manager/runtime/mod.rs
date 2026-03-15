@@ -1,11 +1,13 @@
 use std::time::Duration;
 
 use serde_json::{Value, json};
-use volt_core::ipc::{IPC_HANDLER_TIMEOUT_CODE, IpcRequest, IpcResponse};
+use volt_core::ipc::{
+    IPC_HANDLER_NOT_FOUND_CODE, IPC_HANDLER_TIMEOUT_CODE, IpcRequest, IpcResponse,
+};
 
 use super::{
-    DEFAULT_PRE_SPAWN_GRACE_MS, PLUGIN_ROUTE_INVALID_CODE, PluginDiscoveryIssue, PluginManager,
-    PluginSnapshot, PluginState, parse_plugin_route,
+    DEFAULT_PRE_SPAWN_GRACE_MS, PLUGIN_IPC_HANDLER_NOT_FOUND_CODE, PLUGIN_ROUTE_INVALID_CODE,
+    PluginDiscoveryIssue, PluginManager, PluginSnapshot, PluginState, parse_plugin_route,
 };
 use crate::runner::config::RunnerPluginSpawningStrategy;
 
@@ -105,6 +107,24 @@ impl PluginManager {
         route: &super::PluginRoute,
         timeout: Duration,
     ) -> IpcResponse {
+        let registered = {
+            let Ok(registry) = self.inner.registry.lock() else {
+                return IpcResponse::error_with_code(
+                    request.id.clone(),
+                    "plugin registry is unavailable".to_string(),
+                    PLUGIN_IPC_HANDLER_NOT_FOUND_CODE.to_string(),
+                );
+            };
+            registry.ipc_handlers.get(&request.method).cloned()
+        };
+        let Some(registered) = registered else {
+            return IpcResponse::error_with_code(
+                request.id.clone(),
+                format!("plugin IPC handler not found: {}", request.method),
+                IPC_HANDLER_NOT_FOUND_CODE.to_string(),
+            );
+        };
+
         let process = match self.ensure_plugin_running(&route.plugin_id) {
             Ok(process) => process,
             Err(error) => {
@@ -118,7 +138,11 @@ impl PluginManager {
         };
 
         self.mark_request_started(&route.plugin_id);
-        let response = process.request(&route.method, request.args.clone(), timeout);
+        let response = process.request(
+            "plugin:invoke-ipc",
+            json!({ "channel": registered.method, "args": request.args.clone() }),
+            timeout,
+        );
         self.mark_request_finished(&route.plugin_id);
 
         match response {

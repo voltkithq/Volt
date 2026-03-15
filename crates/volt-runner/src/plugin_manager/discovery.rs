@@ -8,8 +8,8 @@ use volt_core::permissions::Permission;
 
 use super::{
     PLUGIN_NOT_AVAILABLE_CODE, PluginDiscoveryIssue, PluginLifecycle, PluginManager,
-    PluginProcessFactory, PluginRecord, PluginRegistry, PluginResourceMetrics, PluginState,
-    collect_manifest_paths, compute_effective_capabilities, ensure_plugin_data_root,
+    PluginProcessFactory, PluginRecord, PluginRegistrations, PluginRegistry, PluginResourceMetrics,
+    PluginState, collect_manifest_paths, compute_effective_capabilities, ensure_plugin_data_root,
     parse_plugin_manifest, resolve_app_data_root, resolve_plugin_directory,
 };
 use crate::runner::config::RunnerPluginConfig;
@@ -210,6 +210,7 @@ impl PluginManager {
             metrics: PluginResourceMetrics::default(),
             process: None,
             pending_requests: 0,
+            registrations: PluginRegistrations::default(),
             spawn_lock: Arc::new(Mutex::new(())),
         })
     }

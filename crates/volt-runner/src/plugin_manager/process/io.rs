@@ -7,7 +7,7 @@ use std::thread;
 use std::time::Duration;
 
 use super::wire::{WireMessage, WireMessageType};
-use crate::plugin_manager::{ExitListener, ProcessExitInfo};
+use crate::plugin_manager::{ExitListener, MessageListener, ProcessExitInfo};
 
 const MAX_FRAME_SIZE: usize = 16 * 1024 * 1024;
 
@@ -15,6 +15,7 @@ pub(super) struct ChildPluginProcessInner {
     pub(super) child: Mutex<Child>,
     pub(super) stdin: Mutex<BufWriter<ChildStdin>>,
     pub(super) waiters: Mutex<HashMap<String, mpsc::Sender<WireMessage>>>,
+    pub(super) message_listener: Mutex<Option<MessageListener>>,
     pub(super) ready: ReadyState,
     pub(super) exit: ExitState,
     pub(super) next_id: AtomicU64,
@@ -211,6 +212,22 @@ fn read_plugin_stdout(process: Arc<ChildPluginProcessInner>, stdout: ChildStdout
             && let Some(waiter) = waiters.remove(&message.id)
         {
             let _ = waiter.send(message);
+            continue;
+        }
+
+        let listener = process
+            .message_listener
+            .lock()
+            .ok()
+            .and_then(|listener| listener.clone());
+        if let Some(listener) = listener
+            && let Some(response) = listener(message)
+        {
+            let _ = process
+                .stdin
+                .lock()
+                .ok()
+                .map(|mut stdin| write_wire_message(&mut *stdin, &response));
         }
     }
 }

@@ -19,6 +19,8 @@ pub(super) struct FakePlan {
     pub(super) activate: FakeOutcome,
     pub(super) heartbeats: Vec<FakeOutcome>,
     pub(super) requests: HashMap<String, FakeRequestOutcome>,
+    pub(super) requests_seen: Arc<Mutex<Vec<(String, Value)>>>,
+    pub(super) sent_events: Arc<Mutex<Vec<(String, Value)>>>,
     pub(super) deactivate: FakeOutcome,
     pub(super) killed: Arc<AtomicBool>,
 }
@@ -69,6 +71,7 @@ impl PluginProcessFactory for FakeProcessFactory {
 struct FakeProcessHandle {
     plan: Mutex<FakePlan>,
     exit_listener: Mutex<Option<ExitListener>>,
+    _message_listener: Mutex<Option<MessageListener>>,
 }
 
 impl FakeProcessHandle {
@@ -76,6 +79,7 @@ impl FakeProcessHandle {
         Self {
             plan: Mutex::new(plan),
             exit_listener: Mutex::new(None),
+            _message_listener: Mutex::new(None),
         }
     }
 
@@ -136,9 +140,14 @@ impl PluginProcessHandle for FakeProcessHandle {
     fn request(
         &self,
         method: &str,
-        _payload: Value,
+        payload: Value,
         _timeout: Duration,
     ) -> Result<WireMessage, PluginRuntimeError> {
+        let requests_seen = self.plan.lock().expect("plan").requests_seen.clone();
+        requests_seen
+            .lock()
+            .expect("requests seen")
+            .push((method.to_string(), payload));
         let outcome = self
             .plan
             .lock()
@@ -177,6 +186,15 @@ impl PluginProcessHandle for FakeProcessHandle {
                 })
             }
         }
+    }
+
+    fn send_event(&self, method: &str, payload: Value) -> Result<(), PluginRuntimeError> {
+        let sent_events = self.plan.lock().expect("plan").sent_events.clone();
+        sent_events
+            .lock()
+            .expect("sent events")
+            .push((method.to_string(), payload));
+        Ok(())
     }
 
     fn heartbeat(&self, _timeout: Duration) -> Result<(), PluginRuntimeError> {
@@ -241,6 +259,13 @@ impl PluginProcessHandle for FakeProcessHandle {
 
     fn set_exit_listener(&self, listener: Arc<dyn Fn(ProcessExitInfo) + Send + Sync>) {
         *self.exit_listener.lock().expect("listener") = Some(listener);
+    }
+
+    fn set_message_listener(
+        &self,
+        listener: Arc<dyn Fn(WireMessage) -> Option<WireMessage> + Send + Sync>,
+    ) {
+        *self._message_listener.lock().expect("message listener") = Some(listener);
     }
 
     fn stderr_snapshot(&self) -> Option<String> {

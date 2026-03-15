@@ -6,7 +6,7 @@ use crate::plugin_manager::{
 };
 
 impl PluginManager {
-    pub(in crate::plugin_manager::runtime) fn ensure_plugin_running(
+    pub(in crate::plugin_manager) fn ensure_plugin_running(
         &self,
         plugin_id: &str,
     ) -> Result<Arc<dyn PluginProcessHandle>, PluginRuntimeError> {
@@ -40,6 +40,11 @@ impl PluginManager {
         let plugin_id_for_exit = plugin_id.to_string();
         process.set_exit_listener(Arc::new(move |exit| {
             manager.handle_process_exit(&plugin_id_for_exit, exit);
+        }));
+        let manager = self.clone();
+        let plugin_id_for_messages = plugin_id.to_string();
+        process.set_message_listener(Arc::new(move |message| {
+            manager.handle_plugin_message(&plugin_id_for_messages, message)
         }));
         self.register_process(plugin_id, process.clone(), now_ms());
 
@@ -149,6 +154,8 @@ impl PluginManager {
         })?;
         Ok(PluginBootstrapConfig {
             plugin_id: record.manifest.id.clone(),
+            backend_entry: record.manifest.backend_entry.display().to_string(),
+            manifest: record.manifest.raw_manifest.clone(),
             capabilities: record.effective_capabilities.iter().cloned().collect(),
             data_root: data_root.display().to_string(),
             delegated_grants: Vec::new(),
