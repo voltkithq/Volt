@@ -7,6 +7,7 @@ import { buildCommand } from './commands/build.js';
 import { previewCommand } from './commands/preview.js';
 import { packageCommand } from './commands/package.js';
 import { doctorCommand } from './commands/doctor.js';
+import { createPluginCommand } from './commands/plugin.js';
 import { signSetupCommand } from './commands/sign.js';
 import { testCommand } from './commands/test.js';
 import { updatePublishCommand } from './commands/update.js';
@@ -94,6 +95,8 @@ program
 const signProgram = program
   .command('sign')
   .description('Signing setup and tooling helpers');
+
+program.addCommand(createPluginCommand());
 
 signProgram
   .command('setup')

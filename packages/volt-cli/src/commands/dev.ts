@@ -26,6 +26,7 @@ import {
   startOutOfProcessRuntime,
 } from './dev/runtime.js';
 import { parseDevPort, resolveViteDevUrl, spawnVite } from './dev/server.js';
+import { startPluginDevelopment } from './dev/plugin-development.js';
 
 export interface DevOptions {
   port: string;
@@ -75,6 +76,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
 
   let shutdownNativeRuntime = () => {};
   let disposeBackendBundle = () => {};
+  let disposePluginDevelopment = async () => {};
   let nativeRuntimeExitPromise: Promise<void> | null = null;
   let cleanupStarted = false;
   const waitFor = (timeoutMs: number) =>
@@ -99,6 +101,8 @@ export async function devCommand(options: DevOptions): Promise<void> {
     } catch {
       // Continue cleanup even if temporary backend bundle cleanup fails.
     }
+
+    await disposePluginDevelopment().catch(() => {});
 
     try {
       shutdownNativeRuntime();
@@ -208,6 +212,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
   }
 
   shutdownNativeRuntime = () => nativeRuntime.shutdown();
+  disposePluginDevelopment = await startPluginDevelopment(cwd, config.plugins);
 
   // Register the event handler BEFORE run() so no IPC messages are dropped.
   // run() starts the native event loop and the WebView becomes live immediately,

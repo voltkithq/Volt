@@ -4,7 +4,7 @@ export interface IpcMessage {
   type: MessageType;
   id: string;
   method: string;
-  payload: Record<string, unknown> | null;
+  payload: unknown | null;
   error: { code: string; message: string } | null;
 }
 
