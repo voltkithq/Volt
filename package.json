@@ -14,6 +14,7 @@
     "test:benchmarks:release": "node scripts/ci/volt-benchmarks.mjs --release",
     "test:benchmarks:sweep": "node scripts/ci/volt-benchmarks.mjs --sweep",
     "test:benchmarks:sweep:release": "node scripts/ci/volt-benchmarks.mjs --sweep --release",
+    "test:plugin-startup-bench": "node scripts/ci/plugin-startup-bench.mjs",
     "test:soak": "node scripts/soak/nightly-soak.mjs",
     "test:contract-compat": "node scripts/contracts/check-compatibility.mjs",
     "check:loc": "node scripts/ci/loc-guard.mjs",
