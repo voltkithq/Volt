@@ -3,7 +3,7 @@ use boa_engine::{Context, JsResult};
 
 use super::{
     volt_bench, volt_clipboard, volt_crypto, volt_db, volt_dialog, volt_events, volt_fs,
-    volt_global_shortcut, volt_http, volt_ipc, volt_menu, volt_notification, volt_os,
+    volt_global_shortcut, volt_http, volt_ipc, volt_menu, volt_notification, volt_os, volt_plugins,
     volt_secure_storage, volt_shell, volt_tray, volt_updater, volt_window,
 };
 
@@ -32,7 +32,7 @@ pub fn register_all_modules(
     context: &mut Context,
     module_loader: &MapModuleLoader,
 ) -> JsResult<Vec<RegisteredModule>> {
-    let mut registered_modules = Vec::with_capacity(18);
+    let mut registered_modules = Vec::with_capacity(19);
 
     register_module(
         module_loader,
@@ -159,6 +159,13 @@ pub fn register_all_modules(
         "os",
         "volt:os",
         volt_os::build_module(context),
+    );
+    register_module(
+        module_loader,
+        &mut registered_modules,
+        "plugins",
+        "volt:plugins",
+        volt_plugins::build_module(context),
     );
 
     Ok(registered_modules)

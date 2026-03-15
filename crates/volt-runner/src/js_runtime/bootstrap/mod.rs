@@ -25,6 +25,7 @@ pub(super) async fn initialize_context(
         fs_base_dir: options.fs_base_dir,
         permissions: options.permissions,
         app_name: options.app_name,
+        plugin_manager: options.plugin_manager,
         secure_storage_backend: options.secure_storage_backend,
         updater_telemetry_enabled: options.updater_telemetry_enabled,
         updater_telemetry_sink: options.updater_telemetry_sink,

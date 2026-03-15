@@ -2,6 +2,7 @@ mod access_support;
 mod activation;
 mod discovery;
 mod fs_support;
+mod grant_delegation;
 mod lifecycle;
 mod manifest;
 mod prefetch;

@@ -4,6 +4,8 @@ mod crypto_os;
 mod fs_module;
 #[path = "native_modules/integration.rs"]
 mod integration;
+#[path = "native_modules/plugins.rs"]
+mod plugins;
 #[path = "native_modules/secure_storage.rs"]
 mod secure_storage;
 #[path = "native_modules/ui_permissions.rs"]

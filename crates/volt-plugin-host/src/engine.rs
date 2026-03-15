@@ -157,6 +157,14 @@ impl PluginEngine {
                 let _ = self.call_async_global("__volt_plugin_dispatch_event__", &args)?;
                 Ok(false)
             }
+            (MessageType::Event, "plugin:grant-revoked") => {
+                let payload = message.payload.unwrap_or(serde_json::Value::Null);
+                let args = [JsValue::from(js_string!(
+                    required_string(&payload, "grantId")?.as_str()
+                ))];
+                let _ = self.call_async_global("__volt_plugin_revoke_grant__", &args)?;
+                Ok(false)
+            }
             (MessageType::Response, _)
             | (MessageType::Event, _)
             | (MessageType::Signal, "cancel") => Ok(false),

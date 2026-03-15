@@ -157,6 +157,16 @@ pub fn register_native_bridge(context: &mut Context) -> JsResult<()> {
             js_string!("requestAccess"),
             1,
         )
+        .function(
+            NativeFunction::from_fn_ptr(bridge_grants::bind_grant),
+            js_string!("bindGrant"),
+            1,
+        )
+        .function(
+            NativeFunction::from_fn_ptr(bridge_grants::list_grants),
+            js_string!("listGrants"),
+            0,
+        )
         .build();
 
     context.register_global_property(
