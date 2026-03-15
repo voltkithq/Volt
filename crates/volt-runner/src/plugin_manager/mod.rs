@@ -1,5 +1,4 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
-use std::fmt;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -10,10 +9,14 @@ use volt_core::permissions::Permission;
 
 use crate::runner::config::RunnerPluginConfig;
 
+mod access;
+mod contracts;
 mod discovery;
 mod host_api;
+mod host_api_access;
 mod host_api_fs;
 mod host_api_helpers;
+mod host_api_storage;
 mod host_api_support;
 mod lifecycle;
 mod manifest;
@@ -22,23 +25,33 @@ mod process;
 mod runtime;
 mod watchdog;
 
+use self::access::{NativePluginAccessPicker, PluginAccessPicker};
 use self::lifecycle::{PluginLifecycle, now_ms};
 use self::manifest::{compute_effective_capabilities, parse_plugin_manifest, parse_plugin_route};
 use self::paths::{
     collect_manifest_paths, ensure_plugin_data_root, resolve_app_data_root,
     resolve_plugin_directory,
 };
-use self::process::{RealPluginProcessFactory, WireMessage};
+use self::process::RealPluginProcessFactory;
 #[cfg(test)]
 use self::process::{WireError, WireMessageType};
+pub(crate) use self::{
+    access::AccessDialogRequest,
+    contracts::{
+        DelegatedGrant, ExitListener, HostIpcSettings, MessageListener, PluginBootstrapConfig,
+        PluginProcessFactory, PluginProcessHandle, PluginRuntimeError, ProcessExitInfo,
+    },
+};
 
-const PLUGIN_RUNTIME_ERROR_CODE: &str = "PLUGIN_RUNTIME_ERROR";
-const PLUGIN_HEARTBEAT_TIMEOUT_CODE: &str = "PLUGIN_HEARTBEAT_TIMEOUT";
-const PLUGIN_NOT_AVAILABLE_CODE: &str = "PLUGIN_NOT_AVAILABLE";
-const PLUGIN_ROUTE_INVALID_CODE: &str = "PLUGIN_ROUTE_INVALID";
+const PLUGIN_ACCESS_ERROR_CODE: &str = "PLUGIN_ACCESS_ERROR";
 const PLUGIN_COMMAND_NOT_FOUND_CODE: &str = "PLUGIN_COMMAND_NOT_FOUND";
 const PLUGIN_FS_ERROR_CODE: &str = "PLUGIN_FS_ERROR";
+const PLUGIN_HEARTBEAT_TIMEOUT_CODE: &str = "PLUGIN_HEARTBEAT_TIMEOUT";
 const PLUGIN_IPC_HANDLER_NOT_FOUND_CODE: &str = "PLUGIN_IPC_HANDLER_NOT_FOUND";
+const PLUGIN_NOT_AVAILABLE_CODE: &str = "PLUGIN_NOT_AVAILABLE";
+const PLUGIN_ROUTE_INVALID_CODE: &str = "PLUGIN_ROUTE_INVALID";
+const PLUGIN_RUNTIME_ERROR_CODE: &str = "PLUGIN_RUNTIME_ERROR";
+const PLUGIN_STORAGE_ERROR_CODE: &str = "PLUGIN_STORAGE_ERROR";
 const DEFAULT_PRE_SPAWN_GRACE_MS: u64 = 50;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -118,6 +131,7 @@ struct PluginManagerInner {
     app_permissions: HashSet<Permission>,
     app_data_root: PathBuf,
     factory: Arc<dyn PluginProcessFactory>,
+    access_picker: Arc<dyn PluginAccessPicker>,
     registry: Mutex<PluginRegistry>,
 }
 
@@ -140,14 +154,19 @@ struct PluginRecord {
     process: Option<Arc<dyn PluginProcessHandle>>,
     pending_requests: usize,
     registrations: PluginRegistrations,
+    delegated_grants: HashSet<String>,
+    storage_reconciled: bool,
     spawn_lock: Arc<Mutex<()>>,
 }
 
 #[derive(Debug, Clone)]
 struct PluginManifest {
     id: String,
+    name: String,
     capabilities: Vec<String>,
     backend_entry: PathBuf,
+    #[allow(dead_code)]
+    prefetch_on: Vec<String>,
     raw_manifest: Value,
 }
 
@@ -170,54 +189,6 @@ struct PluginRegistrations {
     ipc_handlers: HashSet<String>,
 }
 
-#[derive(Debug, Clone)]
-pub(crate) struct PluginRuntimeError {
-    code: String,
-    message: String,
-}
-
-impl fmt::Display for PluginRuntimeError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {}", self.code, self.message)
-    }
-}
-
-impl std::error::Error for PluginRuntimeError {}
-
-trait PluginProcessFactory: Send + Sync {
-    fn spawn(
-        &self,
-        config: &PluginBootstrapConfig,
-    ) -> Result<Arc<dyn PluginProcessHandle>, PluginRuntimeError>;
-}
-
-trait PluginProcessHandle: Send + Sync {
-    fn process_id(&self) -> Option<u32>;
-    fn wait_for_ready(&self, timeout: std::time::Duration) -> Result<(), PluginRuntimeError>;
-    fn activate(&self, timeout: std::time::Duration) -> Result<(), PluginRuntimeError>;
-    fn send_event(&self, method: &str, payload: Value) -> Result<(), PluginRuntimeError>;
-    fn request(
-        &self,
-        method: &str,
-        payload: Value,
-        timeout: std::time::Duration,
-    ) -> Result<WireMessage, PluginRuntimeError>;
-    fn heartbeat(&self, timeout: std::time::Duration) -> Result<(), PluginRuntimeError>;
-    fn deactivate(&self, timeout: std::time::Duration) -> Result<(), PluginRuntimeError>;
-    fn kill(&self) -> Result<(), PluginRuntimeError>;
-    fn set_exit_listener(&self, listener: Arc<dyn Fn(ProcessExitInfo) + Send + Sync>);
-    fn set_message_listener(&self, listener: MessageListener);
-    fn stderr_snapshot(&self) -> Option<String>;
-}
-
-#[derive(Debug, Clone)]
-struct ProcessExitInfo {
-    code: Option<i32>,
-}
-
-type ExitListener = Arc<dyn Fn(ProcessExitInfo) + Send + Sync>;
-type MessageListener = Arc<dyn Fn(WireMessage) -> Option<WireMessage> + Send + Sync>;
-
 impl PluginRegistry {
     fn new() -> Self {
         Self {
@@ -227,35 +198,6 @@ impl PluginRegistry {
             ipc_handlers: HashMap::new(),
         }
     }
-}
-
-#[derive(Debug, Clone, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-struct PluginBootstrapConfig {
-    plugin_id: String,
-    backend_entry: String,
-    manifest: Value,
-    capabilities: Vec<String>,
-    data_root: String,
-    delegated_grants: Vec<DelegatedGrant>,
-    host_ipc_settings: HostIpcSettings,
-}
-
-#[derive(Debug, Clone, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-struct DelegatedGrant {
-    grant_id: String,
-    path: String,
-}
-
-#[derive(Debug, Clone, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-struct HostIpcSettings {
-    heartbeat_interval_ms: u64,
-    heartbeat_timeout_ms: u64,
-    call_timeout_ms: u64,
-    max_inflight: u32,
-    max_queue_depth: u32,
 }
 
 #[cfg(test)]

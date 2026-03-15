@@ -9,6 +9,7 @@ const VOLT_PLUGIN_BOOTSTRAP: &str = r#"
         commands: new Map(),
         ipc: new Map(),
         events: new Map(),
+        grants: new Map(),
         context: null,
     };
 
@@ -45,6 +46,33 @@ const VOLT_PLUGIN_BOOTSTRAP: &str = r#"
         }
         return value;
     };
+
+    const ensureObject = (value, label) => {
+        if (value === undefined) {
+            return {};
+        }
+        if (!value || typeof value !== 'object' || Array.isArray(value)) {
+            throw new TypeError(`${label} must be an object`);
+        }
+        return value;
+    };
+
+    for (const grant of native.delegatedGrants()) {
+        state.grants.set(grant.grantId, Object.freeze(grant));
+    }
+
+    const createGrantFs = (grantId) => Object.freeze({
+        grantId,
+        readFile(path) { return native.grantFsReadFile(grantId, ensureName(path, 'path')); },
+        writeFile(path, data) {
+            native.grantFsWriteFile(grantId, ensureName(path, 'path'), String(data));
+        },
+        readDir(path) { return native.grantFsReadDir(grantId, ensureName(path, 'path')); },
+        stat(path) { return native.grantFsStat(grantId, ensureName(path, 'path')); },
+        exists(path) { return native.grantFsExists(grantId, ensureName(path, 'path')); },
+        mkdir(path) { return native.grantFsMkdir(grantId, ensureName(path, 'path')); },
+        remove(path) { return native.grantFsRemove(grantId, ensureName(path, 'path')); },
+    });
 
     const context = Object.freeze({
         manifest: freezeDeep(native.manifest()),
@@ -110,8 +138,6 @@ const VOLT_PLUGIN_BOOTSTRAP: &str = r#"
             },
         }),
         fs: Object.freeze({
-            // Filesystem calls are synchronous IPC round-trips into the host. Plugins can still
-            // `await` them, but they do not execute concurrently inside the plugin process.
             readFile(path) { return native.fsReadFile(ensureName(path, 'path')); },
             writeFile(path, data) { native.fsWriteFile(ensureName(path, 'path'), String(data)); },
             readDir(path) { return native.fsReadDir(ensureName(path, 'path')); },
@@ -119,6 +145,31 @@ const VOLT_PLUGIN_BOOTSTRAP: &str = r#"
             exists(path) { return native.fsExists(ensureName(path, 'path')); },
             mkdir(path) { return native.fsMkdir(ensureName(path, 'path')); },
             remove(path) { return native.fsRemove(ensureName(path, 'path')); },
+        }),
+        storage: Object.freeze({
+            async get(key) { return native.storageGet(ensureName(key, 'storage key')); },
+            async set(key, value) {
+                native.storageSet(ensureName(key, 'storage key'), String(value));
+            },
+            async has(key) { return native.storageHas(ensureName(key, 'storage key')); },
+            async delete(key) { return native.storageDelete(ensureName(key, 'storage key')); },
+            async keys() { return native.storageKeys(); },
+        }),
+        grants: Object.freeze({
+            async requestAccess(options) {
+                const access = native.requestAccess(ensureObject(options, 'request access options'));
+                if (access && access.grantId) {
+                    state.grants.set(access.grantId, Object.freeze(access));
+                }
+                return access;
+            },
+            bindFsScope(grantId) {
+                const normalizedGrantId = ensureName(grantId, 'grant id');
+                if (!state.grants.has(normalizedGrantId)) {
+                    throw new Error(`grant is not delegated to this plugin: ${grantId}`);
+                }
+                return createGrantFs(normalizedGrantId);
+            },
         }),
     });
     state.context = context;
@@ -204,9 +255,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn bootstrap_contains_hidden_dispatchers() {
-        assert!(VOLT_PLUGIN_BOOTSTRAP.contains("__volt_plugin_activate__"));
-        assert!(VOLT_PLUGIN_BOOTSTRAP.contains("__volt_plugin_invoke_command__"));
-        assert!(VOLT_PLUGIN_BOOTSTRAP.contains("definePlugin"));
+    fn bootstrap_contains_storage_and_grants_surface() {
+        assert!(VOLT_PLUGIN_BOOTSTRAP.contains("storage:"));
+        assert!(VOLT_PLUGIN_BOOTSTRAP.contains("requestAccess"));
+        assert!(VOLT_PLUGIN_BOOTSTRAP.contains("bindFsScope"));
     }
 }

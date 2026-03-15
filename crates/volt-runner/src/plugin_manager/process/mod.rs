@@ -2,5 +2,5 @@ mod child;
 mod io;
 mod wire;
 
-pub(in crate::plugin_manager) use self::child::RealPluginProcessFactory;
-pub(in crate::plugin_manager) use self::wire::{WireError, WireMessage, WireMessageType};
+pub(crate) use self::child::RealPluginProcessFactory;
+pub(crate) use self::wire::{WireError, WireMessage, WireMessageType};

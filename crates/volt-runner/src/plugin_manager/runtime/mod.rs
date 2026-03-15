@@ -13,6 +13,12 @@ use crate::runner::config::RunnerPluginSpawningStrategy;
 
 mod lifecycle;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum PluginStartupMode {
+    LoadOnly,
+    Activate,
+}
+
 impl PluginManager {
     #[allow(dead_code)]
     pub(crate) fn get_plugin_state(&self, plugin_id: &str) -> Option<PluginSnapshot> {
@@ -86,6 +92,32 @@ impl PluginManager {
     pub(super) fn run_pre_spawn_now(&self) {
         for plugin_id in self.pre_spawn_plugin_ids() {
             let _ = self.ensure_plugin_running(&plugin_id);
+        }
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn prefetch_for(&self, surface: &str) {
+        let plugin_ids = {
+            let Ok(registry) = self.inner.registry.lock() else {
+                return;
+            };
+            registry
+                .plugins
+                .values()
+                .filter(|record| {
+                    record.enabled
+                        && record
+                            .manifest
+                            .prefetch_on
+                            .iter()
+                            .any(|candidate| candidate == surface)
+                })
+                .map(|record| record.manifest.id.clone())
+                .collect::<Vec<_>>()
+        };
+
+        for plugin_id in plugin_ids {
+            let _ = self.ensure_plugin_loaded(&plugin_id);
         }
     }
 

@@ -6,6 +6,7 @@ use std::time::Duration;
 use serde_json::Value;
 
 use super::super::*;
+use crate::plugin_manager::process::WireMessage;
 
 #[derive(Clone)]
 pub(super) struct FakeProcessFactory {

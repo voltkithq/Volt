@@ -10,6 +10,7 @@ pub mod ipc;
 pub mod menu;
 pub mod notification;
 pub mod permissions;
+pub mod plugin_grant_registry;
 pub mod security;
 pub mod shell;
 pub mod tray;

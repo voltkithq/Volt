@@ -7,6 +7,7 @@ use super::super::*;
 use super::fs_support::{TempDir, write_manifest};
 use super::process_support::{FakePlan, FakeProcessFactory, FakeRequestOutcome};
 use super::shared::manager_with_factory;
+use crate::plugin_manager::process::WireMessage;
 use crate::runner::config::RunnerPluginConfig;
 
 mod commands;

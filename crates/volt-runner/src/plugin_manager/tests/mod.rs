@@ -1,9 +1,13 @@
+mod access_support;
 mod activation;
 mod discovery;
 mod fs_support;
 mod lifecycle;
 mod manifest;
+mod prefetch;
 mod process_support;
 mod registrations;
+mod request_access;
 mod request_runtime;
 mod shared;
+mod storage;

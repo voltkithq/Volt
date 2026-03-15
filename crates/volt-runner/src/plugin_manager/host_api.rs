@@ -103,6 +103,25 @@ impl PluginManager {
             "plugin:fs:exists" => self.handle_fs_request(plugin_id, "exists", &payload),
             "plugin:fs:mkdir" => self.handle_fs_request(plugin_id, "mkdir", &payload),
             "plugin:fs:remove" => self.handle_fs_request(plugin_id, "remove", &payload),
+            "plugin:storage:get" => self.handle_storage_request(plugin_id, "get", &payload),
+            "plugin:storage:set" => self.handle_storage_request(plugin_id, "set", &payload),
+            "plugin:storage:has" => self.handle_storage_request(plugin_id, "has", &payload),
+            "plugin:storage:delete" => self.handle_storage_request(plugin_id, "delete", &payload),
+            "plugin:storage:keys" => self.handle_storage_request(plugin_id, "keys", &payload),
+            "plugin:request-access" => self.handle_request_access(plugin_id, &payload),
+            "plugin:grant-fs:read-file" => {
+                self.handle_grant_fs_request(plugin_id, "read-file", &payload)
+            }
+            "plugin:grant-fs:write-file" => {
+                self.handle_grant_fs_request(plugin_id, "write-file", &payload)
+            }
+            "plugin:grant-fs:read-dir" => {
+                self.handle_grant_fs_request(plugin_id, "read-dir", &payload)
+            }
+            "plugin:grant-fs:stat" => self.handle_grant_fs_request(plugin_id, "stat", &payload),
+            "plugin:grant-fs:exists" => self.handle_grant_fs_request(plugin_id, "exists", &payload),
+            "plugin:grant-fs:mkdir" => self.handle_grant_fs_request(plugin_id, "mkdir", &payload),
+            "plugin:grant-fs:remove" => self.handle_grant_fs_request(plugin_id, "remove", &payload),
             _ => Err(PluginRuntimeError {
                 code: PLUGIN_RUNTIME_ERROR_CODE.to_string(),
                 message: format!("plugin host method '{method}' is not supported"),
