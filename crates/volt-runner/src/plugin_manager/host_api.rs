@@ -1,16 +1,13 @@
-#[cfg(test)]
 use std::time::Duration;
 
 use serde_json::Value;
-#[cfg(test)]
 use serde_json::json;
 
-#[cfg(test)]
 use super::PLUGIN_COMMAND_NOT_FOUND_CODE;
 use super::{PLUGIN_RUNTIME_ERROR_CODE, PluginManager, PluginRuntimeError};
-#[cfg(test)]
-use crate::plugin_manager::host_api_helpers::lock_error;
-use crate::plugin_manager::host_api_helpers::{error_response, success_response};
+use crate::plugin_manager::host_api_helpers::{
+    error_response, host_event_subscription_key, lock_error, success_response,
+};
 use crate::plugin_manager::process::{WireMessage, WireMessageType};
 
 impl PluginManager {
@@ -34,7 +31,7 @@ impl PluginManager {
         }
     }
 
-    #[cfg(test)]
+    #[allow(dead_code)]
     pub(crate) fn invoke_command(
         &self,
         namespaced_command: &str,
@@ -79,7 +76,8 @@ impl PluginManager {
     }
 
     pub(crate) fn dispatch_host_event(&self, event_name: &str, data: Value) {
-        let subscribers = self.plugin_event_subscribers(event_name, None);
+        let subscribers =
+            self.plugin_event_subscribers(&host_event_subscription_key(event_name), None);
         self.dispatch_event_to_plugins(&subscribers, event_name, data);
     }
 

@@ -45,7 +45,7 @@ impl PluginManager {
                 app_permissions,
                 app_data_root,
                 factory,
-                registry: Mutex::new(PluginRegistry::default()),
+                registry: Mutex::new(PluginRegistry::new()),
             }),
         };
         manager.discover_plugins();
@@ -61,7 +61,7 @@ impl PluginManager {
             .cloned()
             .collect::<HashSet<_>>();
         let mut manifest_paths = Vec::new();
-        let mut registry = PluginRegistry::default();
+        let mut registry = PluginRegistry::new();
 
         for directory in &self.inner.config.plugin_dirs {
             let resolved = resolve_plugin_directory(directory);

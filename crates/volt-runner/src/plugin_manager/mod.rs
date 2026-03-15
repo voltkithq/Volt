@@ -12,6 +12,7 @@ use crate::runner::config::RunnerPluginConfig;
 
 mod discovery;
 mod host_api;
+mod host_api_fs;
 mod host_api_helpers;
 mod host_api_support;
 mod lifecycle;
@@ -35,7 +36,6 @@ const PLUGIN_RUNTIME_ERROR_CODE: &str = "PLUGIN_RUNTIME_ERROR";
 const PLUGIN_HEARTBEAT_TIMEOUT_CODE: &str = "PLUGIN_HEARTBEAT_TIMEOUT";
 const PLUGIN_NOT_AVAILABLE_CODE: &str = "PLUGIN_NOT_AVAILABLE";
 const PLUGIN_ROUTE_INVALID_CODE: &str = "PLUGIN_ROUTE_INVALID";
-#[cfg(test)]
 const PLUGIN_COMMAND_NOT_FOUND_CODE: &str = "PLUGIN_COMMAND_NOT_FOUND";
 const PLUGIN_FS_ERROR_CODE: &str = "PLUGIN_FS_ERROR";
 const PLUGIN_IPC_HANDLER_NOT_FOUND_CODE: &str = "PLUGIN_IPC_HANDLER_NOT_FOUND";
@@ -121,7 +121,6 @@ struct PluginManagerInner {
     registry: Mutex<PluginRegistry>,
 }
 
-#[derive(Default)]
 struct PluginRegistry {
     plugins: HashMap<String, PluginRecord>,
     discovery_issues: Vec<PluginDiscoveryIssue>,
@@ -159,7 +158,6 @@ struct PluginRoute {
 }
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 struct PluginCommandRoute {
     plugin_id: String,
     command_id: String,
@@ -219,6 +217,17 @@ struct ProcessExitInfo {
 
 type ExitListener = Arc<dyn Fn(ProcessExitInfo) + Send + Sync>;
 type MessageListener = Arc<dyn Fn(WireMessage) -> Option<WireMessage> + Send + Sync>;
+
+impl PluginRegistry {
+    fn new() -> Self {
+        Self {
+            plugins: HashMap::new(),
+            discovery_issues: Vec::new(),
+            commands: HashMap::new(),
+            ipc_handlers: HashMap::new(),
+        }
+    }
+}
 
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]

@@ -1,13 +1,9 @@
-use std::path::PathBuf;
-
 use serde_json::{Value, json};
-use volt_core::fs;
 
-use super::{
-    PLUGIN_FS_ERROR_CODE, PluginCommandRoute, PluginManager, PluginRoute, PluginRuntimeError,
-};
+use super::{PluginCommandRoute, PluginManager, PluginRoute, PluginRuntimeError};
 use crate::plugin_manager::host_api_helpers::{
-    lock_error, namespaced_command, namespaced_ipc, required_string, unavailable_plugin,
+    event_subscription_key, lock_error, namespaced_command, namespaced_event, namespaced_ipc,
+    plugin_event_subscription_key, required_string, unavailable_plugin,
 };
 
 impl PluginManager {
@@ -61,7 +57,10 @@ impl PluginManager {
         let Some(record) = registry.plugins.get_mut(plugin_id) else {
             return Err(unavailable_plugin(plugin_id));
         };
-        record.registrations.event_subscriptions.insert(event_name);
+        record
+            .registrations
+            .event_subscriptions
+            .insert(event_subscription_key(&event_name));
         Ok(Value::Bool(true))
     }
 
@@ -75,7 +74,10 @@ impl PluginManager {
         let Some(record) = registry.plugins.get_mut(plugin_id) else {
             return Err(unavailable_plugin(plugin_id));
         };
-        record.registrations.event_subscriptions.remove(&event_name);
+        record
+            .registrations
+            .event_subscriptions
+            .remove(&event_subscription_key(&event_name));
         Ok(Value::Bool(true))
     }
 
@@ -130,44 +132,6 @@ impl PluginManager {
         Ok(Value::Bool(true))
     }
 
-    pub(super) fn handle_fs_request(
-        &self,
-        plugin_id: &str,
-        operation: &str,
-        payload: &Value,
-    ) -> Result<Value, PluginRuntimeError> {
-        let path = required_string(payload, "path")?;
-        let data_root = self.plugin_data_root(plugin_id)?;
-        match operation {
-            "read-file" => fs::read_file_text(&data_root, &path)
-                .map(Value::String)
-                .map_err(fs_error),
-            "write-file" => {
-                let data = required_string(payload, "data")?;
-                fs::write_file(&data_root, &path, data.as_bytes())
-                    .map(|_| Value::Bool(true))
-                    .map_err(fs_error)
-            }
-            "read-dir" => fs::read_dir(&data_root, &path)
-                .map(|entries| json!(entries))
-                .map_err(fs_error),
-            "stat" => fs::stat(&data_root, &path).map(stat_json).map_err(fs_error),
-            "exists" => fs::exists(&data_root, &path)
-                .map(Value::Bool)
-                .map_err(fs_error),
-            "mkdir" => fs::mkdir(&data_root, &path)
-                .map(|_| Value::Bool(true))
-                .map_err(fs_error),
-            "remove" => fs::remove(&data_root, &path)
-                .map(|_| Value::Bool(true))
-                .map_err(fs_error),
-            _ => Err(PluginRuntimeError {
-                code: PLUGIN_FS_ERROR_CODE.to_string(),
-                message: format!("unsupported fs operation '{operation}'"),
-            }),
-        }
-    }
-
     pub(super) fn handle_plugin_log(&self, plugin_id: &str, payload: Value) {
         let level = payload
             .get("level")
@@ -186,15 +150,6 @@ impl PluginManager {
         }
     }
 
-    pub(super) fn plugin_data_root(&self, plugin_id: &str) -> Result<PathBuf, PluginRuntimeError> {
-        let registry = self.inner.registry.lock().map_err(lock_error)?;
-        registry
-            .plugins
-            .get(plugin_id)
-            .and_then(|record| record.data_root.clone())
-            .ok_or_else(|| unavailable_plugin(plugin_id))
-    }
-
     pub(super) fn plugin_event_subscribers(
         &self,
         event_name: &str,
@@ -203,17 +158,27 @@ impl PluginManager {
         let Ok(registry) = self.inner.registry.lock() else {
             return Vec::new();
         };
+        let wildcard_key = source_plugin_id
+            .map(|_| plugin_event_subscription_key(event_name))
+            .unwrap_or_else(|| event_subscription_key(event_name));
+        let namespaced_key = source_plugin_id.map(|source| namespaced_event(source, event_name));
         registry
             .plugins
             .iter()
             .filter(|(plugin_id, record)| {
-                record
-                    .registrations
-                    .event_subscriptions
-                    .contains(event_name)
-                    && source_plugin_id
-                        .map(|source| source == plugin_id.as_str())
-                        .unwrap_or(true)
+                source_plugin_id
+                    .map(|source| source != plugin_id.as_str())
+                    .unwrap_or(true)
+                    && record
+                        .registrations
+                        .event_subscriptions
+                        .iter()
+                        .any(|subscription| {
+                            subscription == &wildcard_key
+                                || namespaced_key
+                                    .as_ref()
+                                    .is_some_and(|key| subscription == key)
+                        })
             })
             .map(|(plugin_id, _)| plugin_id.clone())
             .collect()
@@ -264,26 +229,8 @@ impl PluginManager {
                 record
                     .registrations
                     .event_subscriptions
-                    .contains(event_name)
+                    .contains(&event_subscription_key(event_name))
             })
         })
     }
-}
-
-fn fs_error(error: fs::FsError) -> PluginRuntimeError {
-    PluginRuntimeError {
-        code: PLUGIN_FS_ERROR_CODE.to_string(),
-        message: error.to_string(),
-    }
-}
-
-fn stat_json(info: fs::FileInfo) -> Value {
-    json!({
-        "size": info.size,
-        "isFile": info.is_file,
-        "isDir": info.is_dir,
-        "readonly": info.readonly,
-        "modifiedMs": info.modified_ms,
-        "createdMs": info.created_ms,
-    })
 }

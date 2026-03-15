@@ -11,6 +11,34 @@ pub(super) fn namespaced_ipc(plugin_id: &str, channel: &str) -> String {
     format!("plugin:{plugin_id}:{channel}")
 }
 
+pub(super) fn namespaced_event(plugin_id: &str, event_name: &str) -> String {
+    format!("plugin:{plugin_id}:{event_name}")
+}
+
+pub(super) fn plugin_event_subscription_key(event_name: &str) -> String {
+    format!("plugin:*:{event_name}")
+}
+
+pub(super) fn host_event_subscription_key(event_name: &str) -> String {
+    event_name.to_string()
+}
+
+pub(super) fn event_subscription_key(event_name: &str) -> String {
+    if event_name.starts_with("plugin:") {
+        event_name.to_string()
+    } else if is_host_event(event_name) {
+        host_event_subscription_key(event_name)
+    } else {
+        plugin_event_subscription_key(event_name)
+    }
+}
+
+pub(super) fn is_host_event(event_name: &str) -> bool {
+    ["app:", "menu:", "shortcut:", "tray:"]
+        .iter()
+        .any(|prefix| event_name.starts_with(prefix))
+}
+
 pub(super) fn success_response(id: &str, method: &str, payload: Value) -> WireMessage {
     WireMessage {
         message_type: WireMessageType::Response,

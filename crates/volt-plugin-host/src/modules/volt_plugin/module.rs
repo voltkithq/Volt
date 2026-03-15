@@ -110,6 +110,8 @@ const VOLT_PLUGIN_BOOTSTRAP: &str = r#"
             },
         }),
         fs: Object.freeze({
+            // Filesystem calls are synchronous IPC round-trips into the host. Plugins can still
+            // `await` them, but they do not execute concurrently inside the plugin process.
             readFile(path) { return native.fsReadFile(ensureName(path, 'path')); },
             writeFile(path, data) { native.fsWriteFile(ensureName(path, 'path'), String(data)); },
             readDir(path) { return native.fsReadDir(ensureName(path, 'path')); },

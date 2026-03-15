@@ -11,6 +11,7 @@ use crate::runner::config::RunnerPluginConfig;
 
 mod commands;
 mod events;
+mod fs;
 
 fn manager_for_registration_tests(
     requests_seen: Arc<Mutex<Vec<(String, Value)>>>,

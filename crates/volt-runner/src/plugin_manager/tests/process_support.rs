@@ -13,7 +13,7 @@ pub(super) struct FakeProcessFactory {
     pub(super) spawn_count: Arc<AtomicU64>,
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub(super) struct FakePlan {
     pub(super) ready: FakeOutcome,
     pub(super) activate: FakeOutcome,
@@ -23,6 +23,21 @@ pub(super) struct FakePlan {
     pub(super) sent_events: Arc<Mutex<Vec<(String, Value)>>>,
     pub(super) deactivate: FakeOutcome,
     pub(super) killed: Arc<AtomicBool>,
+}
+
+impl Default for FakePlan {
+    fn default() -> Self {
+        Self {
+            ready: FakeOutcome::Ok,
+            activate: FakeOutcome::Ok,
+            heartbeats: Vec::new(),
+            requests: HashMap::new(),
+            requests_seen: Arc::new(Mutex::new(Vec::new())),
+            sent_events: Arc::new(Mutex::new(Vec::new())),
+            deactivate: FakeOutcome::Ok,
+            killed: Arc::new(AtomicBool::new(false)),
+        }
+    }
 }
 
 #[derive(Clone, Default)]
