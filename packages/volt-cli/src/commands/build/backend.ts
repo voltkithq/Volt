@@ -17,8 +17,8 @@ export function ensureSupportedBackendExtension(entryPath: string): void {
     return;
   }
   throw new Error(
-    `[volt] Unsupported backend entry extension "${extension || '(none)'}". `
-      + `Expected one of: ${Array.from(SUPPORTED_BACKEND_ENTRY_EXTENSIONS).join(', ')}`,
+    `[volt] Unsupported backend entry extension "${extension || '(none)'}". ` +
+      `Expected one of: ${Array.from(SUPPORTED_BACKEND_ENTRY_EXTENSIONS).join(', ')}`,
   );
 }
 
@@ -26,15 +26,10 @@ export function ensureBackendEntryWithinProject(projectRoot: string, entryPath: 
   const rootRealPath = realpathSync(projectRoot);
   const entryRealPath = realpathSync(entryPath);
   const relativePath = relative(rootRealPath, entryRealPath);
-  if (
-    relativePath === ''
-    || (!relativePath.startsWith('..') && !isAbsolute(relativePath))
-  ) {
+  if (relativePath === '' || (!relativePath.startsWith('..') && !isAbsolute(relativePath))) {
     return;
   }
-  throw new Error(
-    `[volt] Configured backend entry must reside within project root: ${entryPath}`,
-  );
+  throw new Error(`[volt] Configured backend entry must reside within project root: ${entryPath}`);
 }
 
 export function buildRunnerConfigPayload(config: {
@@ -82,7 +77,11 @@ export function buildRunnerConfigPayload(config: {
   }
 
   const runtimePoolSize = rawConfig['runtimePoolSize'];
-  if (typeof runtimePoolSize === 'number' && Number.isInteger(runtimePoolSize) && runtimePoolSize > 0) {
+  if (
+    typeof runtimePoolSize === 'number' &&
+    Number.isInteger(runtimePoolSize) &&
+    runtimePoolSize > 0
+  ) {
     payload['runtimePoolSize'] = runtimePoolSize;
   }
 
