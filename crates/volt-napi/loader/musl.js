@@ -1,60 +1,56 @@
 /* eslint-disable */
 // @ts-nocheck
 
-const { readFileSync } = require('node:fs')
+const { readFileSync } = require('node:fs');
+const { execSync } = require('node:child_process');
 
-const isFileMusl = (f) => f.includes('libc.musl-') || f.includes('ld-musl-')
+const isFileMusl = (filePath) => filePath.includes('libc.musl-') || filePath.includes('ld-musl-');
 
 const isMuslFromFilesystem = () => {
   try {
-    return readFileSync('/usr/bin/ldd', 'utf-8').includes('musl')
+    return readFileSync('/usr/bin/ldd', 'utf-8').includes('musl');
   } catch {
-    return null
+    return null;
   }
-}
+};
 
 const isMuslFromReport = () => {
-  let report = null
+  let report = null;
+
   if (typeof process.report?.getReport === 'function') {
-    process.report.excludeNetwork = true
-    report = process.report.getReport()
+    process.report.excludeNetwork = true;
+    report = process.report.getReport();
   }
+
   if (!report) {
-    return null
+    return null;
   }
   if (report.header && report.header.glibcVersionRuntime) {
-    return false
+    return false;
   }
-  if (Array.isArray(report.sharedObjects)) {
-    if (report.sharedObjects.some(isFileMusl)) {
-      return true
-    }
+  if (Array.isArray(report.sharedObjects) && report.sharedObjects.some(isFileMusl)) {
+    return true;
   }
-  return false
-}
+
+  return false;
+};
 
 const isMuslFromChildProcess = () => {
   try {
-    return require('child_process').execSync('ldd --version', { encoding: 'utf8' }).includes('musl')
-  } catch (e) {
-    return false
+    return execSync('ldd --version', { encoding: 'utf8' }).includes('musl');
+  } catch {
+    return false;
   }
-}
+};
 
 const isMusl = () => {
-  let musl = false
-  if (process.platform === 'linux') {
-    musl = isMuslFromFilesystem()
-    if (musl === null) {
-      musl = isMuslFromReport()
-    }
-    if (musl === null) {
-      musl = isMuslFromChildProcess()
-    }
+  if (process.platform !== 'linux') {
+    return false;
   }
-  return musl
-}
+
+  return isMuslFromFilesystem() ?? isMuslFromReport() ?? isMuslFromChildProcess();
+};
 
 module.exports = {
   isMusl,
-}
+};
