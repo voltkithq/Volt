@@ -112,3 +112,92 @@ fn plugins_module_prefetch_for_is_available() {
 
     assert_eq!(result, "ok");
 }
+
+#[test]
+fn plugins_module_exposes_state_and_error_queries() {
+    let (manager, _) = build_plugin_manager();
+    manager.fail_plugin(
+        "acme.search",
+        "PLUGIN_BROKEN",
+        "boom".to_string(),
+        None,
+        None,
+    );
+    let runtime = runtime_with_plugin_manager(
+        unique_temp_dir("plugins-observability"),
+        &["fs"],
+        Some(manager),
+    );
+
+    let result = runtime
+        .client()
+        .eval_promise_string(
+            "(async () => {
+                const plugins = globalThis.__volt.plugins;
+                const state = await plugins.getPluginState('acme.search');
+                const errors = await plugins.getPluginErrors('acme.search');
+                return `${state.currentState}:${errors.length}:${errors[0].code}`;
+            })()",
+        )
+        .expect("plugin state");
+
+    assert_eq!(result, "failed:1:PLUGIN_BROKEN");
+}
+
+#[test]
+fn plugins_module_receives_lifecycle_events_via_native_bridge() {
+    let (manager, _) = build_plugin_manager();
+    let runtime = runtime_with_plugin_manager(
+        unique_temp_dir("plugins-lifecycle-events"),
+        &["fs"],
+        Some(manager.clone()),
+    );
+    let runtime_client = runtime.client();
+    let _subscription = manager.on_lifecycle(Box::new(move |event| {
+        let payload = serde_json::to_value(event).expect("serialize event");
+        runtime_client
+            .dispatch_native_event("plugin:lifecycle", payload)
+            .expect("dispatch lifecycle event");
+    }));
+
+    runtime
+        .client()
+        .eval_unit(
+            "(async () => {
+                const plugins = globalThis.__volt.plugins;
+                globalThis.__pluginLifecycleEvents = [];
+                const handler = (event) => globalThis.__pluginLifecycleEvents.push(event.newState);
+                globalThis.__pluginLifecycleHandler = handler;
+                plugins.on('plugin:lifecycle', handler);
+            })()",
+        )
+        .expect("bind lifecycle handler");
+
+    manager.fail_plugin(
+        "acme.search",
+        "PLUGIN_BROKEN",
+        "boom".to_string(),
+        None,
+        None,
+    );
+
+    let seen = runtime
+        .client()
+        .eval_string("globalThis.__pluginLifecycleEvents.join(',')")
+        .expect("captured events");
+    assert_eq!(seen, "failed");
+
+    runtime
+        .client()
+        .eval_unit(
+            "globalThis.__volt.plugins.off('plugin:lifecycle', globalThis.__pluginLifecycleHandler)",
+        )
+        .expect("unbind lifecycle handler");
+    manager.retry_plugin("acme.search").expect("retry");
+
+    let after_off = runtime
+        .client()
+        .eval_string("globalThis.__pluginLifecycleEvents.join(',')")
+        .expect("events after off");
+    assert_eq!(after_off, "failed");
+}
