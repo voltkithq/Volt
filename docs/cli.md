@@ -22,9 +22,10 @@ volt dev [options]
 3. Waits for the Vite server to become ready
 4. Creates a native window pointing to the dev server URL
 5. Enables devtools in the WebView
+6. If `plugins.pluginDirs` is configured, watches discovered plugin projects, rebuilds them on change, and restarts their plugin host processes
 
 Runtime/native logging can be tuned with `VOLT_LOG` (or `RUST_LOG` as fallback). Defaults are `debug` for development builds and `warn` for production builds.
-6. Falls back to web-only mode if the native binding is unavailable
+7. Falls back to web-only mode if the native binding is unavailable
 
 **Example:**
 ```bash
@@ -136,6 +137,16 @@ volt doctor [options]
 ```bash
 volt doctor --target win32 --format msix
 ```
+
+## `volt plugin`
+
+Plugin-focused scaffolding, build, smoke-test, and diagnostics commands.
+
+See [Plugin CLI](plugin-cli.md) for:
+- `volt plugin init`
+- `volt plugin build`
+- `volt plugin test`
+- `volt plugin doctor`
 
 ## `volt package`
 

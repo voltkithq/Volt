@@ -114,6 +114,40 @@ export class PluginIpcHost extends EventEmitter {
     });
   }
 
+  signal(method: string, payload: Record<string, unknown> | null = null): Promise<IpcMessage> {
+    return this.tracker.request({
+      type: 'signal',
+      id: randomUUID(),
+      method,
+      payload,
+      error: null,
+    });
+  }
+
+  sendResponse(
+    id: string,
+    method: string,
+    payload: unknown | null = null,
+  ): void {
+    this.writeMessage({
+      type: 'response',
+      id,
+      method,
+      payload,
+      error: null,
+    });
+  }
+
+  sendError(id: string, method: string, code: string, message: string): void {
+    this.writeMessage({
+      type: 'response',
+      id,
+      method,
+      payload: null,
+      error: { code, message },
+    });
+  }
+
   async shutdown(timeoutMs = 5000): Promise<void> {
     if (this.closed) return;
     this.closed = true;
