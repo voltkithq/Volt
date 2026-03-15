@@ -27,7 +27,7 @@ pub(super) fn resolve_and_validate_host(
     Ok(addrs[0])
 }
 
-pub(super) fn normalize_request_url(
+pub(crate) fn normalize_request_url(
     url: &str,
     allow_private_networks: bool,
 ) -> Result<String, String> {
