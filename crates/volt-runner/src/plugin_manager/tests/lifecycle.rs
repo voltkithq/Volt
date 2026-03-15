@@ -3,12 +3,13 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use serde_json::Value;
+use volt_core::grant_store;
 use volt_core::ipc::IpcRequest;
 
 use super::super::*;
 use super::fs_support::{TempDir, write_manifest};
 use super::process_support::{FakePlan, FakeProcessFactory, FakeRequestOutcome};
-use super::shared::{manager_with_factory, register_ipc_handler};
+use super::shared::{lock_grant_state, manager_with_factory, register_ipc_handler};
 use crate::runner::config::RunnerPluginConfig;
 
 #[test]
@@ -108,6 +109,60 @@ fn shutdown_all_deactivates_running_plugins_cleanly() {
     manager.shutdown_all();
 
     let snapshot = manager.get_plugin_state("acme.search").expect("plugin");
-    assert_eq!(snapshot.state, PluginState::Terminated);
+    assert_eq!(snapshot.current_state, PluginState::Terminated);
     assert!(!snapshot.process_running);
+}
+
+#[test]
+fn state_snapshot_reports_active_registrations_and_grants() {
+    let _guard = lock_grant_state();
+    let root = TempDir::new("snapshot-counts");
+    write_manifest(
+        &root.join("plugins/acme.search/volt-plugin.json"),
+        "acme.search",
+        &["fs"],
+    );
+    let grant_path = root.join("granted");
+    std::fs::create_dir_all(&grant_path).expect("grant path");
+    let grant_id = grant_store::create_grant(grant_path).expect("grant");
+    let manager = manager_with_factory(
+        RunnerPluginConfig {
+            enabled: vec!["acme.search".to_string()],
+            grants: BTreeMap::from([("acme.search".to_string(), vec!["fs".to_string()])]),
+            plugin_dirs: vec![root.join("plugins").display().to_string()],
+            ..RunnerPluginConfig::default()
+        },
+        Arc::new(FakeProcessFactory::new(HashMap::new())),
+    );
+
+    manager
+        .delegate_grant("acme.search", &grant_id)
+        .expect("delegate grant");
+    let _ = manager.handle_plugin_message(
+        "acme.search",
+        crate::plugin_manager::process::WireMessage {
+            message_type: WireMessageType::Request,
+            id: "register-command".to_string(),
+            method: "plugin:register-command".to_string(),
+            payload: Some(serde_json::json!({ "id": "reindex" })),
+            error: None,
+        },
+    );
+    let _ = manager.handle_plugin_message(
+        "acme.search",
+        crate::plugin_manager::process::WireMessage {
+            message_type: WireMessageType::Request,
+            id: "subscribe-event".to_string(),
+            method: "plugin:subscribe-event".to_string(),
+            payload: Some(serde_json::json!({ "event": "app:focus" })),
+            error: None,
+        },
+    );
+    register_ipc_handler(&manager, "acme.search", "ping");
+
+    let snapshot = manager.get_plugin_state("acme.search").expect("plugin");
+    assert_eq!(snapshot.active_registrations.command_count, 1);
+    assert_eq!(snapshot.active_registrations.event_subscription_count, 1);
+    assert_eq!(snapshot.active_registrations.ipc_handler_count, 1);
+    assert_eq!(snapshot.delegated_grant_count, 1);
 }

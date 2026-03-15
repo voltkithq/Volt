@@ -9,7 +9,10 @@ use super::{
 
 impl PluginManager {
     pub(super) fn handle_process_exit(&self, plugin_id: &str, exit: ProcessExitInfo) {
-        if let Ok(mut registry) = self.inner.registry.lock() {
+        let events = {
+            let Ok(mut registry) = self.inner.registry.lock() else {
+                return;
+            };
             crate::plugin_manager::host_api_helpers::clear_plugin_registrations_locked(
                 &mut registry,
                 plugin_id,
@@ -17,12 +20,23 @@ impl PluginManager {
             if let Some(record) = registry.plugins.get_mut(plugin_id) {
                 record.process = None;
                 record.pending_requests = 0;
-                match record.lifecycle.current_state() {
-                    PluginState::Deactivating | PluginState::Terminated | PluginState::Disabled => {
-                        let _ = record.lifecycle.transition(PluginState::Terminated);
-                    }
-                    PluginState::Failed => {}
-                    _ => record.lifecycle.fail(
+            }
+
+            match registry
+                .plugins
+                .get(plugin_id)
+                .map(|record| record.lifecycle.current_state())
+            {
+                Some(
+                    PluginState::Deactivating | PluginState::Terminated | PluginState::Disabled,
+                ) => self
+                    .transition_plugin_locked(&mut registry, plugin_id, PluginState::Terminated)
+                    .map(|event| vec![event])
+                    .unwrap_or_default(),
+                Some(PluginState::Failed) => Vec::new(),
+                Some(_) => self
+                    .fail_plugin_locked(
+                        &mut registry,
                         plugin_id,
                         PLUGIN_RUNTIME_ERROR_CODE,
                         format!(
@@ -31,9 +45,13 @@ impl PluginManager {
                         ),
                         Some(serde_json::json!({ "exitCode": exit.code })),
                         None,
-                    ),
-                }
+                    )
+                    .unwrap_or_default(),
+                None => Vec::new(),
             }
+        };
+        for event in events {
+            self.emit_lifecycle_event(event);
         }
     }
 

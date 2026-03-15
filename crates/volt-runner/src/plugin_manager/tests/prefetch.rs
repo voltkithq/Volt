@@ -66,11 +66,14 @@ fn prefetch_spawns_matching_plugin_without_activation() {
         manager
             .get_plugin_state("acme.search")
             .expect("search")
-            .state,
+            .current_state,
         PluginState::Loaded
     );
     assert_eq!(
-        manager.get_plugin_state("beta.index").expect("beta").state,
+        manager
+            .get_plugin_state("beta.index")
+            .expect("beta")
+            .current_state,
         PluginState::Validated
     );
 }
@@ -96,7 +99,7 @@ fn prefetch_ignores_non_matching_surfaces() {
         manager
             .get_plugin_state("acme.search")
             .expect("search")
-            .state,
+            .current_state,
         PluginState::Validated
     );
 }

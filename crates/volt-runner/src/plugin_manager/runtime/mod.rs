@@ -7,11 +7,13 @@ use volt_core::ipc::{
 
 use super::{
     DEFAULT_PRE_SPAWN_GRACE_MS, PLUGIN_IPC_HANDLER_NOT_FOUND_CODE, PLUGIN_ROUTE_INVALID_CODE,
-    PluginDiscoveryIssue, PluginManager, PluginSnapshot, PluginState, parse_plugin_route,
+    PluginDiscoveryIssue, PluginManager, PluginState, parse_plugin_route,
 };
 use crate::runner::config::RunnerPluginSpawningStrategy;
 
 mod lifecycle;
+mod observability;
+mod recovery;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum PluginStartupMode {
@@ -20,28 +22,6 @@ pub(crate) enum PluginStartupMode {
 }
 
 impl PluginManager {
-    #[allow(dead_code)]
-    pub(crate) fn get_plugin_state(&self, plugin_id: &str) -> Option<PluginSnapshot> {
-        let registry = self.inner.registry.lock().ok()?;
-        let record = registry.plugins.get(plugin_id)?;
-        Some(record.snapshot())
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn get_states(&self) -> Vec<PluginSnapshot> {
-        let Ok(registry) = self.inner.registry.lock() else {
-            return Vec::new();
-        };
-        let mut states = registry
-            .plugins
-            .values()
-            .map(super::PluginRecord::snapshot)
-            .collect::<Vec<_>>();
-        states.sort_by(|left, right| left.plugin_id.cmp(&right.plugin_id));
-        states
-    }
-
-    #[allow(dead_code)]
     pub(crate) fn discovery_issues(&self) -> Vec<PluginDiscoveryIssue> {
         let Ok(registry) = self.inner.registry.lock() else {
             return Vec::new();

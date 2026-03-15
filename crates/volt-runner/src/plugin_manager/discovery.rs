@@ -51,6 +51,24 @@ impl PluginManager {
         factory: Arc<dyn PluginProcessFactory>,
         access_picker: Arc<dyn super::PluginAccessPicker>,
     ) -> Result<Self, String> {
+        Self::with_dependencies_and_error_history_limit(
+            app_name,
+            permissions,
+            config,
+            factory,
+            access_picker,
+            super::DEFAULT_PLUGIN_ERROR_HISTORY_LIMIT,
+        )
+    }
+
+    pub(super) fn with_dependencies_and_error_history_limit(
+        app_name: String,
+        permissions: &[String],
+        config: RunnerPluginConfig,
+        factory: Arc<dyn PluginProcessFactory>,
+        access_picker: Arc<dyn super::PluginAccessPicker>,
+        error_history_limit: usize,
+    ) -> Result<Self, String> {
         let app_permissions = permissions
             .iter()
             .filter_map(|name| Permission::from_str_name(name))
@@ -63,6 +81,8 @@ impl PluginManager {
                 app_data_root,
                 factory,
                 access_picker,
+                error_history_limit,
+                lifecycle_bus: super::LifecycleBus::new(),
                 registry: Mutex::new(PluginRegistry::new()),
             }),
         };
@@ -80,6 +100,7 @@ impl PluginManager {
             .collect::<HashSet<_>>();
         let mut manifest_paths = Vec::new();
         let mut registry = PluginRegistry::new();
+        let mut lifecycle_events = Vec::new();
 
         for directory in &self.inner.config.plugin_dirs {
             let resolved = resolve_plugin_directory(directory);
@@ -124,6 +145,7 @@ impl PluginManager {
                             continue;
                         }
                     }
+                    lifecycle_events.extend(record.lifecycle.recorded_events(&record.manifest.id));
                     registry.plugins.insert(record.manifest.id.clone(), record);
                 }
                 Err(issue) => registry.discovery_issues.push(issue),
@@ -143,6 +165,9 @@ impl PluginManager {
 
         if let Ok(mut guard) = self.inner.registry.lock() {
             *guard = registry;
+        }
+        for event in lifecycle_events {
+            self.inner.lifecycle_bus.emit(event);
         }
     }
 
@@ -201,16 +226,22 @@ impl PluginManager {
                 .difference(&effective_capabilities)
                 .cloned()
                 .collect::<Vec<_>>();
-            lifecycle.fail(
-                &manifest.id,
-                PLUGIN_NOT_AVAILABLE_CODE,
-                format!(
-                    "requested capabilities are unsatisfiable: {}",
-                    missing.join(", ")
-                ),
-                Some(json!({ "missingCapabilities": missing })),
-                None,
-            );
+            lifecycle
+                .fail(
+                    &manifest.id,
+                    PLUGIN_NOT_AVAILABLE_CODE,
+                    format!(
+                        "requested capabilities are unsatisfiable: {}",
+                        missing.join(", ")
+                    ),
+                    Some(json!({ "missingCapabilities": missing })),
+                    None,
+                    self.inner.error_history_limit,
+                )
+                .map_err(|message| PluginDiscoveryIssue {
+                    path: Some(manifest_path.to_path_buf()),
+                    message,
+                })?;
         } else {
             lifecycle
                 .transition(PluginState::Validated)

@@ -66,6 +66,18 @@ fn run() -> Result<(), RunnerError> {
         .load_backend_bundle(&backend_bundle_source)
         .map_err(|err| RunnerError::App(format!("failed to load backend bundle: {err}")))?;
     let runtime_client = js_runtime.client();
+    let lifecycle_runtime = runtime_client.clone();
+    let _lifecycle_subscription = plugin_manager.on_lifecycle(Box::new(move |event| {
+        dispatch_plugin_lifecycle_event(&lifecycle_runtime, "plugin:lifecycle", event);
+    }));
+    let failed_runtime = runtime_client.clone();
+    let _failed_subscription = plugin_manager.on_plugin_failed(Box::new(move |event| {
+        dispatch_plugin_lifecycle_event(&failed_runtime, "plugin:failed", event);
+    }));
+    let activated_runtime = runtime_client.clone();
+    let _activated_subscription = plugin_manager.on_plugin_activated(Box::new(move |event| {
+        dispatch_plugin_lifecycle_event(&activated_runtime, "plugin:activated", event);
+    }));
     let ipc_bridge = ipc_bridge::IpcBridge::new_with_plugin_manager(
         runtime_client.clone(),
         Some(plugin_manager.clone()),
@@ -126,4 +138,21 @@ fn run() -> Result<(), RunnerError> {
     app_result.map_err(|err| RunnerError::App(format!("event loop error: {err}")))?;
 
     Ok(())
+}
+
+fn dispatch_plugin_lifecycle_event(
+    runtime_client: &js_runtime_pool::JsRuntimePoolClient,
+    event_type: &str,
+    event: &plugin_manager::PluginLifecycleEvent,
+) {
+    let payload = match serde_json::to_value(event) {
+        Ok(payload) => payload,
+        Err(error) => {
+            tracing::error!(error = %error, event_type = %event_type, "failed to serialize plugin lifecycle event");
+            return;
+        }
+    };
+    if let Err(error) = runtime_client.dispatch_native_event(event_type, payload) {
+        tracing::error!(error = %error, event_type = %event_type, "failed to dispatch plugin lifecycle event");
+    }
 }

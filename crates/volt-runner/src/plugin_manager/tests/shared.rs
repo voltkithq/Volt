@@ -33,7 +33,16 @@ pub(super) fn manager_with_picker(
     factory: Arc<dyn PluginProcessFactory>,
     picker: Arc<dyn PluginAccessPicker>,
 ) -> PluginManager {
-    PluginManager::with_dependencies(
+    manager_with_picker_and_error_history_limit(config, factory, picker, 50)
+}
+
+pub(super) fn manager_with_picker_and_error_history_limit(
+    config: RunnerPluginConfig,
+    factory: Arc<dyn PluginProcessFactory>,
+    picker: Arc<dyn PluginAccessPicker>,
+    error_history_limit: usize,
+) -> PluginManager {
+    PluginManager::with_dependencies_and_error_history_limit(
         "Volt Test".to_string(),
         &[
             "fs".to_string(),
@@ -43,8 +52,22 @@ pub(super) fn manager_with_picker(
         config,
         factory,
         picker,
+        error_history_limit,
     )
     .expect("manager")
+}
+
+pub(super) fn manager_with_error_history_limit(
+    config: RunnerPluginConfig,
+    factory: Arc<dyn PluginProcessFactory>,
+    error_history_limit: usize,
+) -> PluginManager {
+    manager_with_picker_and_error_history_limit(
+        config,
+        factory,
+        Arc::new(FakeAccessPicker::default()),
+        error_history_limit,
+    )
 }
 
 #[allow(dead_code)]
