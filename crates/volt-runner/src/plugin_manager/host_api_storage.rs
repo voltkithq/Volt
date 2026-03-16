@@ -22,8 +22,8 @@ impl PluginManager {
         // next storage operation. If that transport model changes, this code
         // will need an explicit per-plugin storage lock.
         let (storage_root, should_reconcile) = self.prepare_storage_root(plugin_id)?;
-        let mut storage = store::PluginStorage::open(&storage_root, should_reconcile)
-            .map_err(storage_error)?;
+        let mut storage =
+            store::PluginStorage::open(&storage_root, should_reconcile).map_err(storage_error)?;
 
         match operation {
             "get" => Ok(storage
@@ -31,7 +31,10 @@ impl PluginManager {
                 .map(Value::String)
                 .unwrap_or(Value::Null)),
             "set" => {
-                storage.set(store::required_key(payload)?, store::required_value(payload)?)?;
+                storage.set(
+                    store::required_key(payload)?,
+                    store::required_value(payload)?,
+                )?;
                 Ok(Value::Null)
             }
             "has" => Ok(Value::Bool(storage.has(store::required_key(payload)?)?)),

@@ -7,8 +7,8 @@ use std::thread;
 use std::time::Duration;
 
 use super::stderr_capture::read_bounded_stderr;
-use super::wire_io::read_wire_message;
 use super::wire::{WireMessage, WireMessageType};
+use super::wire_io::read_wire_message;
 use crate::plugin_manager::{ExitListener, MessageListener, ProcessExitInfo};
 
 pub(super) struct ChildPluginProcessInner {
