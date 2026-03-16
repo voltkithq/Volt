@@ -58,6 +58,10 @@ pub fn safe_resolve(base: &Path, user_path: &str) -> Result<PathBuf, FsError> {
         }
     };
 
+    if !canonical_resolved.starts_with(&canonical_base) {
+        return Err(FsError::OutOfScope);
+    }
+
     Ok(canonical_resolved)
 }
 

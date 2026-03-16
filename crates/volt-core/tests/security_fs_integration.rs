@@ -131,6 +131,7 @@ fn safe_resolve_rejects_symlink_escape() {
     let sandbox = create_sandbox();
     let outside = create_sandbox();
     let link_path = sandbox.join("escape-link");
+    std::fs::write(outside.join("secret.txt"), "sensitive").unwrap();
 
     #[cfg(unix)]
     {
