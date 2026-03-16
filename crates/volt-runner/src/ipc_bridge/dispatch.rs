@@ -68,14 +68,24 @@ pub(super) fn dispatch_ipc_task(
     request_id: &str,
     timeout: Duration,
 ) -> IpcResponse {
+    if (matches_fast_path(raw) || matches_plugin_route(raw))
+        && let Err(error) = runtime_client.check_ipc_rate_limit()
+    {
+        return IpcResponse::error_with_code(
+            request_id.to_string(),
+            error,
+            IPC_HANDLER_ERROR_CODE.to_string(),
+        );
+    }
+
     if let Some(response) = try_dispatch_native_fast_path(raw) {
-        return rate_limit_response(runtime_client, request_id, response);
+        return response;
     }
 
     if let Some(plugin_manager) = plugin_manager
         && let Some(response) = try_dispatch_plugin_route(plugin_manager, raw, timeout)
     {
-        return rate_limit_response(runtime_client, request_id, response);
+        return response;
     }
 
     runtime_client
@@ -102,6 +112,33 @@ pub(super) fn dispatch_ipc_task(
         })
 }
 
+fn matches_fast_path(raw: &str) -> bool {
+    let Some(method) = extract_method(raw) else {
+        return false;
+    };
+    method == "__volt_internal:csp-violation"
+        || method == crate::modules::volt_bench::DATA_PROFILE_CHANNEL
+        || method == crate::modules::volt_bench::DATA_QUERY_CHANNEL
+        || method == crate::modules::volt_bench::WORKFLOW_RUN_CHANNEL
+}
+
+fn matches_plugin_route(raw: &str) -> bool {
+    extract_method(raw)
+        .map(|method| method.starts_with("plugin:"))
+        .unwrap_or(false)
+}
+
+fn extract_method(raw: &str) -> Option<String> {
+    serde_json::from_str::<JsonValue>(raw)
+        .ok()
+        .and_then(|value| {
+            value
+                .get("method")
+                .and_then(JsonValue::as_str)
+                .map(str::to_string)
+        })
+}
+
 fn try_dispatch_plugin_route(
     plugin_manager: &PluginManager,
     raw: &str,
@@ -117,19 +154,4 @@ fn try_dispatch_plugin_route(
     }
     let request: IpcRequest = serde_json::from_value(parsed).ok()?;
     plugin_manager.handle_ipc_request(&request, timeout)
-}
-
-fn rate_limit_response(
-    runtime_client: &JsRuntimePoolClient,
-    request_id: &str,
-    response: IpcResponse,
-) -> IpcResponse {
-    match runtime_client.check_ipc_rate_limit() {
-        Ok(()) => response,
-        Err(error) => IpcResponse::error_with_code(
-            request_id.to_string(),
-            error,
-            IPC_HANDLER_ERROR_CODE.to_string(),
-        ),
-    }
 }

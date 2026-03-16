@@ -3,7 +3,10 @@
 
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
-use volt_core::fs::{mkdir, read_dir, read_file_text, remove, safe_resolve, stat, write_file};
+use volt_core::fs::{
+    copy, exists, mkdir, read_dir, read_file, read_file_text, remove, rename, replace_file,
+    safe_resolve, stat, write_file,
+};
 
 /// Helper to create a temporary test sandbox with a unique directory per call.
 fn create_sandbox() -> std::path::PathBuf {
@@ -128,6 +131,7 @@ fn safe_resolve_rejects_symlink_escape() {
     let sandbox = create_sandbox();
     let outside = create_sandbox();
     let link_path = sandbox.join("escape-link");
+    std::fs::write(outside.join("secret.txt"), "sensitive").unwrap();
 
     #[cfg(unix)]
     {
@@ -146,6 +150,63 @@ fn safe_resolve_rejects_symlink_escape() {
 
     let resolved = safe_resolve(&sandbox, "escape-link/secret.txt");
     assert!(resolved.is_err());
+
+    cleanup(&sandbox);
+    cleanup(&outside);
+}
+
+#[test]
+fn fs_operations_reject_symlink_escape_targets() {
+    let sandbox = create_sandbox();
+    let outside = create_sandbox();
+    let link_path = sandbox.join("escape-link");
+    let inside_source = sandbox.join("source.txt");
+    let inside_replace = sandbox.join("replace-source.txt");
+    std::fs::write(outside.join("secret.txt"), "outside-secret").unwrap();
+    std::fs::write(&inside_source, "inside-source").unwrap();
+    std::fs::write(&inside_replace, "replace-source").unwrap();
+
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(&outside, &link_path).unwrap();
+    }
+
+    #[cfg(windows)]
+    {
+        if std::os::windows::fs::symlink_dir(&outside, &link_path).is_err() {
+            cleanup(&sandbox);
+            cleanup(&outside);
+            return;
+        }
+    }
+
+    assert!(read_file(&sandbox, "escape-link/secret.txt").is_err());
+    assert!(read_file_text(&sandbox, "escape-link/secret.txt").is_err());
+    assert!(read_dir(&sandbox, "escape-link").is_err());
+    assert!(stat(&sandbox, "escape-link/secret.txt").is_err());
+    assert!(exists(&sandbox, "escape-link/secret.txt").is_err());
+    assert!(write_file(&sandbox, "escape-link/secret.txt", b"pwned").is_err());
+    assert!(mkdir(&sandbox, "escape-link/newdir").is_err());
+    assert!(remove(&sandbox, "escape-link/secret.txt").is_err());
+    assert!(rename(&sandbox, "source.txt", "escape-link/renamed.txt").is_err());
+    assert!(copy(&sandbox, "source.txt", "escape-link/copied.txt").is_err());
+    assert!(replace_file(&sandbox, "replace-source.txt", "escape-link/replaced.txt").is_err());
+    assert_eq!(
+        std::fs::read_to_string(outside.join("secret.txt")).unwrap(),
+        "outside-secret"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&inside_source).unwrap(),
+        "inside-source"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&inside_replace).unwrap(),
+        "replace-source"
+    );
+    assert!(!outside.join("copied.txt").exists());
+    assert!(!outside.join("renamed.txt").exists());
+    assert!(!outside.join("replaced.txt").exists());
+    assert!(!outside.join("newdir").exists());
 
     cleanup(&sandbox);
     cleanup(&outside);

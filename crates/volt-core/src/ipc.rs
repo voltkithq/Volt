@@ -16,7 +16,8 @@ pub use self::protocol::{
 pub use self::rate_limit::RateLimiter;
 pub use self::security::{IPC_MAX_REQUEST_BYTES, IpcError};
 pub use self::webview::{
-    event_script, ipc_init_script, payload_too_large_response_script, response_script,
+    IPC_MAX_RESPONSE_BYTES, event_script, ipc_init_script, payload_too_large_response_script,
+    response_script,
 };
 
 /// Registry of IPC handlers mapped by method name.

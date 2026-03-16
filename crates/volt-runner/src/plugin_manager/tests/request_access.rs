@@ -138,3 +138,28 @@ fn request_access_returns_null_when_user_cancels() {
 
     assert_eq!(response.payload, Some(serde_json::Value::Null));
 }
+
+#[test]
+fn request_access_sanitizes_dialog_titles_from_plugins() {
+    let _guard = lock_grant_state();
+    let selected_root = TempDir::new("selected-folder-sanitized");
+    let selected_path = selected_root.join("picked");
+    std::fs::create_dir_all(&selected_path).expect("selected dir");
+    let picker = FakeAccessPicker::from_responses(vec![Ok(Some(selected_path))]);
+    let seen = picker.seen.clone();
+    let manager = manager_for_access_tests(picker);
+    let spoofed_title = format!("Hello\u{202E}\n{}", "x".repeat(120));
+
+    let _ = plugin_request(
+        &manager,
+        "acme.search",
+        "plugin:request-access",
+        json!({ "title": spoofed_title, "directory": true }),
+    );
+
+    let seen = seen.lock().expect("seen");
+    assert_eq!(seen.len(), 1);
+    assert!(!seen[0].title.contains('\n'));
+    assert!(!seen[0].title.contains('\u{202E}'));
+    assert!(seen[0].title.len() <= "Plugin 'Acme Search' wants to access a folder: ".len() + 100);
+}

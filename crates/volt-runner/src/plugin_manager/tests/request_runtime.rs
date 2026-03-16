@@ -162,8 +162,6 @@ fn watchdog_kills_after_two_missed_heartbeats() {
         },
         Duration::from_millis(50),
     );
-    thread::sleep(Duration::from_millis(60));
-
     assert!(wait_for_flag(killed.as_ref(), Duration::from_millis(200)));
     assert_eq!(
         manager

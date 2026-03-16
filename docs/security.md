@@ -63,6 +63,8 @@ All filesystem operations go through `safe_resolve()`, which enforces:
 4. **Reserved device names** - Windows device names (`CON`, `PRN`, `NUL`, `COM1`-`COM9`, `LPT1`-`LPT9`) are blocked to prevent device access attacks
 5. **Scoped create path checks** - Parent directories for create/write flows are materialized inside the sandbox one component at a time, and symlink escapes are rejected before a new file is created
 
+After validation, Volt performs file operations relative to an opened scoped base-directory handle rather than handing the resolved string path directly back to `std::fs`. This closes the validate-then-open gap for the built-in sandboxed CRUD operations.
+
 The TypeScript `fs` module adds a second validation layer before calling into Rust, providing defense-in-depth.
 
 ## IPC Security
@@ -85,13 +87,14 @@ A sliding-window rate limiter (default: 1000 requests/second) protects against I
 IPC uses bounded load-shedding to prevent memory growth under abusive traffic:
 
 - Payload size is capped (`256 KiB`); oversized messages are rejected with `IPC_PAYLOAD_TOO_LARGE`
+- Response scripts are capped (`16 MiB`); oversized responses are replaced with a structured IPC error before `evaluate_script()`
 - Per-window in-flight IPC processing is capped (`32` by default in dev bridge); overflow is rejected with `IPC_IN_FLIGHT_LIMIT`
 - Renderer pending IPC map is bounded (`128` pending requests) to avoid unbounded queue buildup
 - Bridge workers enforce end-to-end handler timeouts so a wedged synchronous handler cannot stall the IPC queue indefinitely
 
 ### Response Escaping
 
-IPC responses are embedded in JavaScript via `evaluate_script()`. All response JSON is escaped (backslashes, single quotes, newlines) to prevent injection through crafted payloads.
+IPC responses are embedded in JavaScript via `evaluate_script()`. All response JSON is escaped (backslashes, single quotes, null bytes, and line terminators) to prevent injection through crafted payloads. The injected `window.__volt_response__` and `window.__volt_event__` handlers are installed as non-writable, non-configurable properties.
 
 ## Navigation Whitelist
 

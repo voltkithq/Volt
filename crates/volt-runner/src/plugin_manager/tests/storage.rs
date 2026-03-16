@@ -149,10 +149,12 @@ fn storage_reconciles_orphan_value_files_on_first_access() {
     let storage_root = storage_root(&manager);
     std::fs::create_dir_all(&storage_root).expect("storage dir");
     std::fs::write(storage_root.join("orphan.val"), "orphan").expect("orphan");
+    std::fs::write(storage_root.join("stale.tmp"), "temp").expect("temp");
 
     let _ = storage_request(&manager, "plugin:storage:keys", json!({}));
 
     assert!(!storage_root.join("orphan.val").exists());
+    assert!(!storage_root.join("stale.tmp").exists());
 }
 
 #[test]
@@ -180,5 +182,41 @@ fn storage_rejects_oversized_keys_values_and_traversal() {
             json!({ "key": "../escape" }),
         )
         .contains("path traversal")
+    );
+}
+
+#[test]
+fn storage_recovers_from_corrupted_index() {
+    let manager = manager_for_storage_tests();
+    let storage_root = storage_root(&manager);
+    std::fs::create_dir_all(&storage_root).expect("storage dir");
+    std::fs::write(storage_root.join("_index.json"), "{not-json").expect("corrupt index");
+
+    assert_eq!(
+        storage_request(&manager, "plugin:storage:keys", json!({})),
+        json!([])
+    );
+}
+
+#[test]
+fn storage_rejects_writes_that_exceed_plugin_quota() {
+    let manager = manager_for_storage_tests();
+    let quota_busting_value = "v".repeat(1024 * 1024);
+
+    for index in 0..100 {
+        let _ = storage_request(
+            &manager,
+            "plugin:storage:set",
+            json!({ "key": format!("key-{index}"), "value": quota_busting_value }),
+        );
+    }
+
+    assert!(
+        storage_error(
+            &manager,
+            "plugin:storage:set",
+            json!({ "key": "overflow", "value": "boom" }),
+        )
+        .contains("storage quota exceeded")
     );
 }

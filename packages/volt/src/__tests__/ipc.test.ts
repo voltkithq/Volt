@@ -45,6 +45,12 @@ describe('ipcMain', () => {
     );
   });
 
+  it('handle rejects reserved internal Volt channels', () => {
+    expect(() => ipcMain.handle('__volt_internal:csp-violation', () => 'nope')).toThrow(
+      'reserved by Volt',
+    );
+  });
+
   it('removeHandler removes a handler', () => {
     ipcMain.handle('test-channel', () => 'x');
     ipcMain.removeHandler('test-channel');

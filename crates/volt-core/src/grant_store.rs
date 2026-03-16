@@ -11,9 +11,9 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use thiserror::Error;
+use uuid::Uuid;
 
 #[derive(Error, Debug)]
 pub enum GrantError {
@@ -30,7 +30,6 @@ struct GrantEntry {
     root_path: PathBuf,
 }
 
-static GRANT_COUNTER: AtomicU64 = AtomicU64::new(0);
 static GRANT_STORE: Mutex<Option<HashMap<String, GrantEntry>>> = Mutex::new(None);
 
 fn with_store<F, R>(f: F) -> R
@@ -43,12 +42,7 @@ where
 }
 
 fn generate_grant_id() -> String {
-    let count = GRANT_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let ts = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    format!("grant_{ts:x}_{count:x}")
+    format!("grant_{}", Uuid::new_v4())
 }
 
 /// Create a new grant for the given directory path.
@@ -59,10 +53,16 @@ pub fn create_grant(path: PathBuf) -> Result<String, GrantError> {
     if !path.is_dir() {
         return Err(GrantError::InvalidPath);
     }
+    let canonical_path = path.canonicalize().map_err(|_| GrantError::InvalidPath)?;
 
     let id = generate_grant_id();
     with_store(|store| {
-        store.insert(id.clone(), GrantEntry { root_path: path });
+        store.insert(
+            id.clone(),
+            GrantEntry {
+                root_path: canonical_path,
+            },
+        );
     });
     Ok(id)
 }
@@ -113,7 +113,7 @@ mod tests {
         assert!(id.starts_with("grant_"));
 
         let resolved = resolve_grant(&id).unwrap();
-        assert_eq!(resolved, dir);
+        assert_eq!(resolved, dir.canonicalize().unwrap());
     }
 
     #[test]

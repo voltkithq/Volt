@@ -1,5 +1,7 @@
 //! Content Security Policy generation for WebView responses.
 
+use unicode_normalization::UnicodeNormalization;
+
 const VOLT_EMBEDDED_ORIGINS: &str = "volt://localhost http://volt.localhost https://volt.localhost";
 
 /// Default CSP for production builds - strict, no unsafe-eval.
@@ -48,7 +50,11 @@ fn sanitize_dev_server_origin(dev_server_origin: &str) -> Option<(String, String
         return None;
     }
     let host = parsed.host_str()?;
-    if host.contains(';') || host.contains('\n') || host.contains('\r') {
+    if host.contains(';')
+        || host.contains('\n')
+        || host.contains('\r')
+        || host.chars().any(|ch| ch.is_ascii_whitespace())
+    {
         return None;
     }
     let mut http_origin = format!("{scheme}://{host}");
@@ -63,39 +69,40 @@ fn sanitize_dev_server_origin(dev_server_origin: &str) -> Option<(String, String
 
 /// Validate that a path string does not attempt directory traversal.
 pub fn validate_path(path: &str) -> Result<(), String> {
+    let normalized = path.nfc().collect::<String>();
+
+    if normalized.contains('\0') {
+        return Err("Null bytes are not allowed in paths".to_string());
+    }
+
     // Reject absolute paths
-    if path.starts_with('/') || path.starts_with('\\') {
+    if normalized.starts_with('/') || normalized.starts_with('\\') {
         return Err("Absolute paths are not allowed".to_string());
     }
 
     // Reject Windows drive letters
-    if path.len() >= 2 && path.as_bytes()[1] == b':' {
+    if normalized.len() >= 2 && normalized.as_bytes()[1] == b':' {
         return Err("Absolute paths are not allowed".to_string());
     }
 
     // Reject path traversal
-    for component in path.split(['/', '\\']) {
+    for component in normalized.split(['/', '\\']) {
         if component == ".." {
             return Err("Path traversal (..) is not allowed".to_string());
         }
     }
 
     // Reject Windows reserved device names
-    let base_name = path
-        .split(['/', '\\'])
-        .next_back()
-        .unwrap_or(path)
-        .split('.')
-        .next()
-        .unwrap_or("");
-
     let reserved = [
         "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
         "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
     ];
 
-    if reserved.iter().any(|r| r.eq_ignore_ascii_case(base_name)) {
-        return Err(format!("Reserved device name '{base_name}' is not allowed"));
+    for component in normalized.split(['/', '\\']) {
+        let base_name = component.split('.').next().unwrap_or("");
+        if reserved.iter().any(|r| r.eq_ignore_ascii_case(base_name)) {
+            return Err(format!("Reserved device name '{base_name}' is not allowed"));
+        }
     }
 
     Ok(())
@@ -211,6 +218,12 @@ mod tests {
     }
 
     #[test]
+    fn test_development_csp_rejects_whitespace_in_origin() {
+        let csp = development_csp("http://localhost :5173");
+        assert!(!csp.contains("localhost :5173"));
+    }
+
+    #[test]
     fn test_production_csp_has_only_explicit_localhost_allowances() {
         let csp = production_csp();
         assert!(csp.contains("https://volt.localhost"));
@@ -269,6 +282,17 @@ mod tests {
         assert!(validate_path("CONSOLE.log").is_ok());
         assert!(validate_path("PRINTER").is_ok());
         assert!(validate_path("connection.json").is_ok());
+    }
+
+    #[test]
+    fn test_path_rejects_reserved_names_in_any_component() {
+        assert!(validate_path("CON/file.txt").is_err());
+        assert!(validate_path("safe/PRN/data.txt").is_err());
+    }
+
+    #[test]
+    fn test_path_rejects_null_bytes() {
+        assert!(validate_path("data\0file.txt").is_err());
     }
 
     #[test]

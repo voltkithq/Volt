@@ -165,9 +165,7 @@ impl AccessRequestOptions {
             title: object
                 .get("title")
                 .and_then(Value::as_str)
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .map(str::to_string),
+                .and_then(sanitize_dialog_request_title),
             directory: object
                 .get("directory")
                 .and_then(Value::as_bool)
@@ -178,6 +176,40 @@ impl AccessRequestOptions {
                 .unwrap_or(false),
         })
     }
+}
+
+const MAX_ACCESS_TITLE_CHARS: usize = 100;
+
+fn sanitize_dialog_request_title(title: &str) -> Option<String> {
+    let sanitized = title
+        .chars()
+        .filter(|ch| !is_dialog_control_character(*ch))
+        .take(MAX_ACCESS_TITLE_CHARS)
+        .collect::<String>();
+    let trimmed = sanitized.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
+fn is_dialog_control_character(ch: char) -> bool {
+    ch.is_control()
+        || matches!(
+            ch,
+            '\u{200E}'
+                | '\u{200F}'
+                | '\u{202A}'
+                | '\u{202B}'
+                | '\u{202C}'
+                | '\u{202D}'
+                | '\u{202E}'
+                | '\u{2066}'
+                | '\u{2067}'
+                | '\u{2068}'
+                | '\u{2069}'
+        )
 }
 
 fn format_dialog_title(plugin_name: &str, options: &AccessRequestOptions) -> String {
