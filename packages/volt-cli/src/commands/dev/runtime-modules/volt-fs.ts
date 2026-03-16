@@ -1,5 +1,10 @@
 import { fs as frameworkFs } from 'voltkit';
 import type { FileInfo, ScopedFs, WatchEvent, FileWatcher } from 'voltkit';
+import { devModuleError } from './shared.js';
+
+function invalidScopeError(): Error {
+  return devModuleError('fs', 'FS_SCOPE_INVALID: grant ID not found or expired');
+}
 
 export async function readFile(path: string): Promise<string> {
   return frameworkFs.readFile(path);
@@ -40,61 +45,61 @@ const devScopedHandles = new Map<string, ScopedFs>();
 
 export async function scopedReadFile(grantId: string, path: string): Promise<string> {
   const handle = devScopedHandles.get(grantId);
-  if (!handle) throw new Error('FS_SCOPE_INVALID: grant ID not found or expired');
+  if (!handle) throw invalidScopeError();
   return handle.readFile(path);
 }
 
 export async function scopedReadFileBinary(grantId: string, path: string): Promise<Uint8Array> {
   const handle = devScopedHandles.get(grantId);
-  if (!handle) throw new Error('FS_SCOPE_INVALID: grant ID not found or expired');
+  if (!handle) throw invalidScopeError();
   return handle.readFileBinary(path);
 }
 
 export async function scopedReadDir(grantId: string, path: string): Promise<string[]> {
   const handle = devScopedHandles.get(grantId);
-  if (!handle) throw new Error('FS_SCOPE_INVALID: grant ID not found or expired');
+  if (!handle) throw invalidScopeError();
   return handle.readDir(path);
 }
 
 export async function scopedStat(grantId: string, path: string): Promise<FileInfo> {
   const handle = devScopedHandles.get(grantId);
-  if (!handle) throw new Error('FS_SCOPE_INVALID: grant ID not found or expired');
+  if (!handle) throw invalidScopeError();
   return handle.stat(path);
 }
 
 export async function scopedExists(grantId: string, path: string): Promise<boolean> {
   const handle = devScopedHandles.get(grantId);
-  if (!handle) throw new Error('FS_SCOPE_INVALID: grant ID not found or expired');
+  if (!handle) throw invalidScopeError();
   return handle.exists(path);
 }
 
 export async function scopedWriteFile(grantId: string, path: string, data: string): Promise<void> {
   const handle = devScopedHandles.get(grantId);
-  if (!handle) throw new Error('FS_SCOPE_INVALID: grant ID not found or expired');
+  if (!handle) throw invalidScopeError();
   await handle.writeFile(path, data);
 }
 
 export async function scopedMkdir(grantId: string, path: string): Promise<void> {
   const handle = devScopedHandles.get(grantId);
-  if (!handle) throw new Error('FS_SCOPE_INVALID: grant ID not found or expired');
+  if (!handle) throw invalidScopeError();
   await handle.mkdir(path);
 }
 
 export async function scopedRemove(grantId: string, path: string): Promise<void> {
   const handle = devScopedHandles.get(grantId);
-  if (!handle) throw new Error('FS_SCOPE_INVALID: grant ID not found or expired');
+  if (!handle) throw invalidScopeError();
   await handle.remove(path);
 }
 
 export async function scopedRename(grantId: string, from: string, to: string): Promise<void> {
   const handle = devScopedHandles.get(grantId);
-  if (!handle) throw new Error('FS_SCOPE_INVALID: grant ID not found or expired');
+  if (!handle) throw invalidScopeError();
   await handle.rename(from, to);
 }
 
 export async function scopedCopy(grantId: string, from: string, to: string): Promise<void> {
   const handle = devScopedHandles.get(grantId);
-  if (!handle) throw new Error('FS_SCOPE_INVALID: grant ID not found or expired');
+  if (!handle) throw invalidScopeError();
   await handle.copy(from, to);
 }
 
@@ -111,13 +116,13 @@ export async function watchStart(
 
 export async function watchPoll(watcherId: string): Promise<WatchEvent[]> {
   const watcher = devWatcherHandles.get(watcherId);
-  if (!watcher) throw new Error('watcher not found');
+  if (!watcher) throw devModuleError('fs', 'watcher not found');
   return watcher.poll();
 }
 
 export async function watchClose(watcherId: string): Promise<void> {
   const watcher = devWatcherHandles.get(watcherId);
-  if (!watcher) throw new Error('watcher not found');
+  if (!watcher) throw devModuleError('fs', 'watcher not found');
   await watcher.close();
   devWatcherHandles.delete(watcherId);
 }
@@ -129,7 +134,7 @@ export async function scopedWatchStart(
   debounceMs: number,
 ): Promise<string> {
   const handle = devScopedHandles.get(grantId);
-  if (!handle) throw new Error('FS_SCOPE_INVALID: grant ID not found or expired');
+  if (!handle) throw invalidScopeError();
   const watcher = await handle.watch(subpath, { recursive, debounceMs });
   const id = `dev_watcher_${Date.now()}_${Math.random().toString(36).slice(2)}`;
   devWatcherHandles.set(id, watcher);

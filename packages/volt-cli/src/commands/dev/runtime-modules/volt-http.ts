@@ -1,3 +1,7 @@
+import { lookup } from 'node:dns/promises';
+import { isIP } from 'node:net';
+import { devModuleError, ensureDevPermission } from './shared.js';
+
 interface HttpFetchRequest {
   url: string;
   method?: string;
@@ -12,6 +16,15 @@ interface HttpFetchResponse {
   text(): Promise<string>;
   json(): Promise<unknown>;
 }
+
+const BLOCKED_HOSTNAMES = new Set([
+  'localhost',
+  '127.0.0.1',
+  '0.0.0.0',
+  '::1',
+  '169.254.169.254',
+  'metadata.google.internal',
+]);
 
 function normalizeBody(body: unknown): unknown {
   if (body === null || body === undefined) {
@@ -43,7 +56,85 @@ function normalizeHeaders(headers: Headers): Record<string, string[]> {
   return normalized;
 }
 
+function createBlockedHttpError(reason: string): Error {
+  return devModuleError('http', `HTTP request blocked in dev mode: ${reason}.`);
+}
+
+function normalizeRequestUrl(url: string): URL {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw devModuleError('http', `Invalid HTTP URL: ${url}`);
+  }
+
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw createBlockedHttpError(`unsupported protocol '${parsed.protocol}'`);
+  }
+  if (parsed.username || parsed.password) {
+    throw createBlockedHttpError('embedded credentials are not allowed');
+  }
+  return parsed;
+}
+
+function isBlockedHostname(hostname: string): boolean {
+  const normalized = hostname.trim().toLowerCase();
+  return BLOCKED_HOSTNAMES.has(normalized) || normalized.endsWith('.localhost');
+}
+
+function isPrivateIpAddress(address: string): boolean {
+  const family = isIP(address);
+  if (family === 4) {
+    const octets = address.split('.').map((part) => Number.parseInt(part, 10));
+    if (octets.length !== 4 || octets.some((part) => Number.isNaN(part))) {
+      return true;
+    }
+    const [a, b] = octets;
+    return a === 0
+      || a === 10
+      || a === 127
+      || (a === 169 && b === 254)
+      || (a === 172 && b >= 16 && b <= 31)
+      || (a === 192 && b === 168);
+  }
+
+  if (family === 6) {
+    const normalized = address.toLowerCase();
+    return normalized === '::1'
+      || normalized.startsWith('fe8')
+      || normalized.startsWith('fe9')
+      || normalized.startsWith('fea')
+      || normalized.startsWith('feb')
+      || normalized.startsWith('fc')
+      || normalized.startsWith('fd')
+      || normalized.startsWith('::ffff:127.');
+  }
+
+  return true;
+}
+
+async function ensureSafeRequestTarget(url: URL): Promise<void> {
+  if (isBlockedHostname(url.hostname)) {
+    throw createBlockedHttpError(`host '${url.hostname}' is not allowed`);
+  }
+
+  const addresses = isIP(url.hostname)
+    ? [url.hostname]
+    : (await lookup(url.hostname, { all: true, verbatim: true })).map((entry) => entry.address);
+
+  if (addresses.length === 0) {
+    throw createBlockedHttpError(`host '${url.hostname}' did not resolve to an address`);
+  }
+  if (addresses.some((address) => isPrivateIpAddress(address))) {
+    throw createBlockedHttpError(`host '${url.hostname}' resolved to a private or local address`);
+  }
+}
+
 export async function fetch(request: HttpFetchRequest): Promise<HttpFetchResponse> {
+  ensureDevPermission('http', 'http.fetch()');
+  const targetUrl = normalizeRequestUrl(request.url);
+  await ensureSafeRequestTarget(targetUrl);
+
   const controller = new AbortController();
   const timeoutMs = request.timeoutMs;
   const timeout = typeof timeoutMs === 'number' && Number.isFinite(timeoutMs) && timeoutMs > 0
@@ -51,7 +142,7 @@ export async function fetch(request: HttpFetchRequest): Promise<HttpFetchRespons
     : null;
 
   try {
-    const response = await globalThis.fetch(request.url, {
+    const response = await globalThis.fetch(targetUrl, {
       method: request.method ?? 'GET',
       headers: request.headers,
       body: normalizeBody(request.body) as RequestInit['body'],

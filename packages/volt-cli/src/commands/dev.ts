@@ -179,6 +179,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
     projectRoot: cwd,
     defaultWindowId: windowConfig.jsId,
     nativeRuntime,
+    permissions: config.permissions ?? [],
   });
 
   let backendLoadState: Awaited<ReturnType<typeof loadBackendEntrypointForDev>>;

@@ -4,15 +4,23 @@ use volt_core::ipc::{
 };
 
 pub(super) fn send_response_to_window(js_window_id: &str, response: IpcResponse) {
+    let request_id = response.id.clone();
     let Some(response_json) = response_json_for_window(response) else {
         return;
     };
 
     let script = response_script(&response_json);
-    let _ = command::send_command(AppCommand::EvaluateScript {
+    if let Err(error) = command::send_command(AppCommand::EvaluateScript {
         js_id: js_window_id.to_string(),
         script,
-    });
+    }) {
+        tracing::debug!(
+            window_id = %js_window_id,
+            request_id = %request_id,
+            error = %error,
+            "dropping IPC response because the target window is unavailable"
+        );
+    }
 }
 
 fn response_json_for_window(response: IpcResponse) -> Option<String> {

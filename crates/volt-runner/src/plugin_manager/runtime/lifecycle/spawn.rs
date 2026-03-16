@@ -78,6 +78,7 @@ impl PluginManager {
             manager.handle_plugin_message(&plugin_id_for_messages, message)
         }));
         self.register_process(plugin_id, process.clone(), now_ms());
+        self.abort_cancelled_spawn(plugin_id, process.clone())?;
 
         if let Err(error) = process.wait_for_ready(self.activation_timeout()) {
             self.fail_plugin(
@@ -90,6 +91,7 @@ impl PluginManager {
             let _ = process.kill();
             return Err(unavailable_message(plugin_id, "failed before ready"));
         }
+        self.abort_cancelled_spawn(plugin_id, process.clone())?;
         self.transition_plugin(plugin_id, PluginState::Loaded)?;
         if mode == PluginStartupMode::LoadOnly {
             return Ok(process);
@@ -190,8 +192,9 @@ impl PluginManager {
 
         let record = registry
             .plugins
-            .get(plugin_id)
+            .get_mut(plugin_id)
             .expect("plugin exists after state transition");
+        record.spawn_cancelled = false;
         let data_root = record.data_root.clone().ok_or_else(|| PluginRuntimeError {
             code: PLUGIN_RUNTIME_ERROR_CODE.to_string(),
             message: format!("plugin '{plugin_id}' is missing a data root"),
@@ -240,6 +243,34 @@ impl PluginManager {
             record.metrics.started_at_ms = Some(started_at_ms);
             record.process = Some(process);
         }
+    }
+
+    fn abort_cancelled_spawn(
+        &self,
+        plugin_id: &str,
+        process: Arc<dyn PluginProcessHandle>,
+    ) -> Result<(), PluginRuntimeError> {
+        let cancelled = self
+            .inner
+            .registry
+            .lock()
+            .map_err(|_| registry_unavailable())?
+            .plugins
+            .get(plugin_id)
+            .map(|record| record.spawn_cancelled)
+            .ok_or_else(|| unavailable_plugin(plugin_id))?;
+        if !cancelled {
+            return Ok(());
+        }
+
+        let _ = process.kill();
+        if let Ok(mut registry) = self.inner.registry.lock()
+            && let Some(record) = registry.plugins.get_mut(plugin_id)
+        {
+            record.process = None;
+            record.pending_requests = 0;
+        }
+        Err(unavailable_message(plugin_id, "spawn was cancelled"))
     }
 }
 

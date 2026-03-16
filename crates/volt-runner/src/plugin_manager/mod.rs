@@ -179,6 +179,7 @@ struct PluginRecord {
     registrations: PluginRegistrations,
     delegated_grants: HashSet<String>,
     storage_reconciled: bool,
+    spawn_cancelled: bool,
     spawn_lock: Arc<Mutex<()>>,
 }
 

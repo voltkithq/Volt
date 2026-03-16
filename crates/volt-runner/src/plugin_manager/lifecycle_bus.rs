@@ -1,6 +1,7 @@
 use std::collections::HashMap;
+use std::panic::{self, AssertUnwindSafe};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use serde::Serialize;
 
@@ -65,26 +66,25 @@ impl LifecycleBus {
 
     #[allow(dead_code)]
     pub(crate) fn off(&self, subscription_id: SubscriptionId) {
-        if let Ok(mut subscribers) = self.subscribers.lock() {
-            subscribers.remove(&subscription_id);
-        }
+        lock_subscribers(&self.subscribers).remove(&subscription_id);
     }
 
     pub(crate) fn emit(&self, event: PluginLifecycleEvent) {
-        let handlers = self
-            .subscribers
-            .lock()
-            .map(|subscribers| {
-                subscribers
-                    .values()
-                    .filter(|(topic, _)| topic_matches(*topic, &event))
-                    .map(|(_, handler)| handler.clone())
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
+        let handlers = lock_subscribers(&self.subscribers)
+            .values()
+            .filter(|(topic, _)| topic_matches(*topic, &event))
+            .map(|(_, handler)| handler.clone())
+            .collect::<Vec<_>>();
 
         for handler in handlers {
-            handler(&event);
+            if let Err(payload) = panic::catch_unwind(AssertUnwindSafe(|| handler(&event))) {
+                tracing::error!(
+                    panic = %panic_payload_message(&payload),
+                    plugin_id = %event.plugin_id,
+                    new_state = ?event.new_state,
+                    "plugin lifecycle subscriber panicked"
+                );
+            }
         }
     }
 
@@ -94,11 +94,31 @@ impl LifecycleBus {
         handler: Box<dyn Fn(&PluginLifecycleEvent) + Send + Sync>,
     ) -> SubscriptionId {
         let id = SubscriptionId(self.next_id.fetch_add(1, Ordering::Relaxed));
-        if let Ok(mut subscribers) = self.subscribers.lock() {
-            subscribers.insert(id, (topic, Arc::from(handler)));
-        }
+        lock_subscribers(&self.subscribers).insert(id, (topic, Arc::from(handler)));
         id
     }
+}
+
+fn lock_subscribers(
+    subscribers: &Mutex<HashMap<SubscriptionId, (LifecycleTopic, LifecycleHandler)>>,
+) -> MutexGuard<'_, HashMap<SubscriptionId, (LifecycleTopic, LifecycleHandler)>> {
+    match subscribers.lock() {
+        Ok(guard) => guard,
+        Err(error) => {
+            tracing::warn!("plugin lifecycle bus subscriber registry was poisoned; recovering");
+            error.into_inner()
+        }
+    }
+}
+
+fn panic_payload_message(payload: &Box<dyn std::any::Any + Send>) -> String {
+    if let Some(message) = payload.downcast_ref::<&str>() {
+        return (*message).to_string();
+    }
+    if let Some(message) = payload.downcast_ref::<String>() {
+        return message.clone();
+    }
+    "unknown panic payload".to_string()
 }
 
 fn topic_matches(topic: LifecycleTopic, event: &PluginLifecycleEvent) -> bool {
@@ -111,5 +131,55 @@ fn topic_matches(topic: LifecycleTopic, event: &PluginLifecycleEvent) -> bool {
                 (Some(PluginState::Loaded), PluginState::Active)
             )
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_event() -> PluginLifecycleEvent {
+        PluginLifecycleEvent {
+            plugin_id: "acme.search".to_string(),
+            previous_state: Some(PluginState::Loaded),
+            new_state: PluginState::Active,
+            timestamp: 1,
+            error: None,
+        }
+    }
+
+    #[test]
+    fn subscribe_and_off_recover_after_mutex_poisoning() {
+        let bus = LifecycleBus::new();
+        let subscribers = bus.subscribers.clone();
+        let _ = std::panic::catch_unwind(|| {
+            let _guard = subscribers.lock().expect("subscribers");
+            panic!("poison");
+        });
+
+        let subscription = bus.on_lifecycle(Box::new(|_| {}));
+        assert!(lock_subscribers(&bus.subscribers).contains_key(&subscription));
+
+        bus.off(subscription);
+        assert!(!lock_subscribers(&bus.subscribers).contains_key(&subscription));
+    }
+
+    #[test]
+    fn emit_recover_after_mutex_poisoning() {
+        let bus = LifecycleBus::new();
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let seen_for_handler = seen.clone();
+        bus.on_lifecycle(Box::new(move |event| {
+            seen_for_handler.lock().expect("seen").push(event.new_state);
+        }));
+
+        let subscribers = bus.subscribers.clone();
+        let _ = std::panic::catch_unwind(|| {
+            let _guard = subscribers.lock().expect("subscribers");
+            panic!("poison");
+        });
+
+        bus.emit(sample_event());
+        assert_eq!(*seen.lock().expect("seen"), vec![PluginState::Active]);
     }
 }

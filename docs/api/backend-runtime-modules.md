@@ -101,6 +101,7 @@ Key-value secret storage for backend code.
 
 - key must be a non-empty string after trim
 - key length must be at most 256 characters
+- value length must be at most 8192 bytes
 
 ### Example
 

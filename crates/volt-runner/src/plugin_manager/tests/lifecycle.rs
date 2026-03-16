@@ -38,6 +38,29 @@ fn state_machine_rejects_invalid_transitions() {
 }
 
 #[test]
+fn state_machine_only_allows_terminated_self_transition() {
+    let mut lifecycle = PluginLifecycle::new();
+    lifecycle
+        .transition(PluginState::Discovered)
+        .expect("discovered");
+    lifecycle
+        .transition(PluginState::Validated)
+        .expect("validated");
+    assert!(lifecycle.transition(PluginState::Validated).is_err());
+
+    lifecycle
+        .transition(PluginState::Spawning)
+        .expect("spawning");
+    lifecycle.transition(PluginState::Loaded).expect("loaded");
+    lifecycle
+        .transition(PluginState::Terminated)
+        .expect("terminated");
+    lifecycle
+        .transition(PluginState::Terminated)
+        .expect("terminated self-transition");
+}
+
+#[test]
 fn get_states_returns_sorted_plugin_snapshots() {
     let root = TempDir::new("states");
     write_manifest(
@@ -165,4 +188,32 @@ fn state_snapshot_reports_active_registrations_and_grants() {
     assert_eq!(snapshot.active_registrations.event_subscription_count, 1);
     assert_eq!(snapshot.active_registrations.ipc_handler_count, 1);
     assert_eq!(snapshot.delegated_grant_count, 1);
+}
+
+#[test]
+fn disabled_plugins_ignore_process_exit_transitions() {
+    let root = TempDir::new("disabled-exit");
+    write_manifest(
+        &root.join("plugins/acme.search/volt-plugin.json"),
+        "acme.search",
+        &["fs"],
+    );
+    let manager = manager_with_factory(
+        RunnerPluginConfig {
+            enabled: Vec::new(),
+            plugin_dirs: vec![root.join("plugins").display().to_string()],
+            ..RunnerPluginConfig::default()
+        },
+        Arc::new(FakeProcessFactory::new(HashMap::new())),
+    );
+
+    manager.handle_process_exit("acme.search", ProcessExitInfo { code: Some(0) });
+
+    assert_eq!(
+        manager
+            .get_plugin_state("acme.search")
+            .expect("plugin")
+            .current_state,
+        PluginState::Disabled
+    );
 }

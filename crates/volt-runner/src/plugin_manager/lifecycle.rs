@@ -164,8 +164,11 @@ fn trim_error_history(errors: &mut Vec<PluginError>, max_errors: usize) {
 }
 
 fn is_valid_transition(current: PluginState, next: PluginState) -> bool {
-    if current == next || next == PluginState::Failed || next == PluginState::Disabled {
+    if next == PluginState::Failed || next == PluginState::Disabled {
         return true;
+    }
+    if current == next {
+        return current == PluginState::Terminated;
     }
 
     matches!(
@@ -175,6 +178,7 @@ fn is_valid_transition(current: PluginState, next: PluginState) -> bool {
             | (PluginState::Terminated, PluginState::Spawning)
             | (PluginState::Failed, PluginState::Spawning)
             | (PluginState::Disabled, PluginState::Validated)
+            | (PluginState::Spawning, PluginState::Terminated)
             | (PluginState::Spawning, PluginState::Loaded)
             | (PluginState::Loaded, PluginState::Terminated)
             | (PluginState::Loaded, PluginState::Active)

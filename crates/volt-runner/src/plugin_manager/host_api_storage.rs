@@ -21,6 +21,11 @@ impl PluginManager {
         operation: &str,
         payload: &Value,
     ) -> Result<Value, PluginRuntimeError> {
+        // Plugin storage requests are serialized per plugin today:
+        // the host reads one plugin message at a time and the plugin-side
+        // request API waits synchronously for the reply before sending the
+        // next storage operation. If that transport model changes, this code
+        // will need an explicit per-plugin storage lock.
         let (storage_root, should_reconcile) = self.prepare_storage_root(plugin_id)?;
         let mut storage =
             PluginStorage::open(&storage_root, should_reconcile).map_err(storage_error)?;

@@ -7,10 +7,7 @@ use boa_engine::job::SimpleJobExecutor;
 use boa_engine::object::builtins::JsPromise;
 use boa_engine::{Context, JsValue, js_string};
 use serde_json::Value as JsonValue;
-use volt_core::ipc::{
-    IPC_HANDLER_ERROR_CODE, IPC_HANDLER_TIMEOUT_CODE, IPC_MAX_REQUEST_BYTES, IpcRequest,
-    IpcResponse,
-};
+use volt_core::ipc::{IPC_HANDLER_ERROR_CODE, IPC_MAX_REQUEST_BYTES, IpcRequest, IpcResponse};
 
 use super::IPC_DISPATCH_SAFE_GLOBAL;
 const IPC_PROTOTYPE_CHECK_MAX_DEPTH: usize = 64;
@@ -48,6 +45,7 @@ pub(super) async fn dispatch_ipc_request(
     ipc_state: &mut IpcRuntimeState,
     raw: &str,
     timeout: Duration,
+    deadline: Instant,
 ) -> IpcResponse {
     let request = match parse_ipc_request(raw, ipc_state) {
         Ok(request) => request,
@@ -68,10 +66,21 @@ pub(super) async fn dispatch_ipc_request(
     }
 
     let dispatch_timeout = super::normalize_ipc_timeout(timeout);
+    let remaining_timeout = deadline.saturating_duration_since(Instant::now());
+    let queue_delay = dispatch_timeout.saturating_sub(remaining_timeout);
+    if remaining_timeout.is_zero() {
+        return super::serde_support::ipc_timeout_response(
+            request.id,
+            request.method,
+            dispatch_timeout,
+            queue_delay,
+        );
+    }
+    let handler_timeout = super::ipc_inner_timeout_budget(remaining_timeout);
 
     let request_id = request.id.clone();
     let dispatch_result = tokio::time::timeout(
-        dispatch_timeout,
+        handler_timeout,
         dispatch_ipc_handler(context, job_executor, &request.method, &request.args),
     )
     .await;
@@ -83,18 +92,11 @@ pub(super) async fn dispatch_ipc_request(
         Ok(Err(message)) => {
             IpcResponse::error_with_code(request_id, message, IPC_HANDLER_ERROR_CODE.to_string())
         }
-        Err(_) => IpcResponse::error_with_details(
+        Err(_) => super::serde_support::ipc_timeout_response(
             request_id,
-            format!(
-                "IPC handler timed out after {}ms: {}",
-                dispatch_timeout.as_millis(),
-                request.method
-            ),
-            IPC_HANDLER_TIMEOUT_CODE.to_string(),
-            serde_json::json!({
-                "timeoutMs": dispatch_timeout.as_millis(),
-                "method": request.method
-            }),
+            request.method,
+            dispatch_timeout,
+            queue_delay,
         ),
     }
 }
@@ -240,7 +242,7 @@ async fn dispatch_ipc_handler(
             PromiseState::Pending if crate::modules::dialog_async::has_pending_dialogs() => {
                 // A dialog is pending on another thread — yield briefly and
                 // retry rather than burning through the iteration budget.
-                std::thread::sleep(std::time::Duration::from_millis(10));
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
                 continue;
             }
             PromiseState::Pending if iterations < MAX_JOB_ITERATIONS => continue,

@@ -1,6 +1,8 @@
+use std::time::Duration;
+
 use boa_engine::{Context, JsError, JsValue};
 use serde_json::Value as JsonValue;
-use volt_core::ipc::{IPC_HANDLER_ERROR_CODE, IpcResponse};
+use volt_core::ipc::{IPC_HANDLER_ERROR_CODE, IPC_HANDLER_TIMEOUT_CODE, IpcResponse};
 
 pub(super) fn js_error(error: JsError) -> String {
     error.to_string()
@@ -59,6 +61,27 @@ pub(super) fn response_for_dispatch_payload(request_id: String, payload: JsonVal
     IpcResponse::error_with_code(request_id, error_message, error_code)
 }
 
+pub(super) fn ipc_timeout_response(
+    request_id: String,
+    method: String,
+    timeout: Duration,
+    queue_delay: Duration,
+) -> IpcResponse {
+    IpcResponse::error_with_details(
+        request_id,
+        format!(
+            "IPC handler timed out after {}ms: {method}",
+            timeout.as_millis()
+        ),
+        IPC_HANDLER_TIMEOUT_CODE.to_string(),
+        serde_json::json!({
+            "timeoutMs": timeout.as_millis(),
+            "method": method,
+            "queueDelayMs": queue_delay.as_millis()
+        }),
+    )
+}
+
 pub(crate) fn extract_ipc_method(raw: &str) -> String {
     match serde_json::from_str::<JsonValue>(raw) {
         Ok(value) => value
@@ -100,5 +123,28 @@ mod tests {
             Some("IPC response missing 'ok' field")
         );
         assert_eq!(response.error_code.as_deref(), Some(IPC_HANDLER_ERROR_CODE));
+    }
+
+    #[test]
+    fn ipc_timeout_response_preserves_explicit_queue_delay() {
+        let response = ipc_timeout_response(
+            "req-1".to_string(),
+            "slow".to_string(),
+            Duration::from_millis(20),
+            Duration::from_millis(7),
+        );
+
+        assert_eq!(
+            response.error_code.as_deref(),
+            Some(IPC_HANDLER_TIMEOUT_CODE)
+        );
+        assert_eq!(
+            response
+                .error_details
+                .as_ref()
+                .and_then(|details| details.get("queueDelayMs"))
+                .and_then(serde_json::Value::as_u64),
+            Some(7)
+        );
     }
 }

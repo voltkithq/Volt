@@ -262,6 +262,7 @@ impl PluginManager {
             registrations: PluginRegistrations::default(),
             delegated_grants: HashSet::new(),
             storage_reconciled: false,
+            spawn_cancelled: false,
             spawn_lock: Arc::new(Mutex::new(())),
         })
     }

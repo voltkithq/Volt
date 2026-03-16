@@ -8,7 +8,9 @@ use volt_core::ipc::IpcRequest;
 
 use super::super::*;
 use super::fs_support::{TempDir, write_manifest};
-use super::process_support::{FakeOutcome, FakePlan, FakeProcessFactory, FakeRequestOutcome};
+use super::process_support::{
+    FakeOutcome, FakePlan, FakeProcessFactory, FakeRequestOutcome, wait_for_flag,
+};
 use super::shared::{manager_with_factory, register_ipc_handler};
 use crate::runner::config::{RunnerPluginConfig, RunnerPluginSpawning};
 
@@ -250,4 +252,56 @@ fn pre_spawn_forces_startup_activation_after_window_ready_hook() {
             .current_state,
         PluginState::Running
     );
+}
+
+#[test]
+fn deactivation_during_spawning_cancels_startup_and_terminates_plugin() {
+    let root = TempDir::new("spawn-cancel");
+    write_manifest(
+        &root.join("plugins/acme.search/volt-plugin.json"),
+        "acme.search",
+        &["fs"],
+    );
+    let plan = FakePlan {
+        ready: FakeOutcome::DelayOk(40),
+        ..FakePlan::default()
+    };
+    let killed = plan.killed.clone();
+    let manager = manager_with_factory(
+        RunnerPluginConfig {
+            enabled: vec!["acme.search".to_string()],
+            grants: BTreeMap::from([("acme.search".to_string(), vec!["fs".to_string()])]),
+            plugin_dirs: vec![root.join("plugins").display().to_string()],
+            ..RunnerPluginConfig::default()
+        },
+        Arc::new(FakeProcessFactory::new(HashMap::from([(
+            "acme.search".to_string(),
+            plan,
+        )]))),
+    );
+    register_ipc_handler(&manager, "acme.search", "ping");
+
+    let manager_for_request = manager.clone();
+    let request = std::thread::spawn(move || {
+        manager_for_request.handle_ipc_request(
+            &IpcRequest {
+                id: "req-1".to_string(),
+                method: "plugin:acme.search:ping".to_string(),
+                args: Value::Null,
+            },
+            Duration::from_millis(100),
+        )
+    });
+
+    std::thread::sleep(Duration::from_millis(5));
+    manager.deactivate_plugin("acme.search");
+
+    let response = request.join().expect("request thread").expect("response");
+    assert!(response.result.is_none());
+    assert!(response.error.is_some());
+    assert!(wait_for_flag(killed.as_ref(), Duration::from_millis(200)));
+
+    let snapshot = manager.get_plugin_state("acme.search").expect("plugin");
+    assert_eq!(snapshot.current_state, PluginState::Terminated);
+    assert!(!snapshot.process_running);
 }
