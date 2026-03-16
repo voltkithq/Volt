@@ -9,9 +9,10 @@ use serde_json::Value;
 use super::messaging::send_and_wait;
 use crate::plugin_manager::process::io::{
     ChildPluginProcessInner, ExitState, ReadyState, spawn_exit_watcher, spawn_stderr_reader,
-    spawn_stdout_reader, wait_for_exit, write_wire_message,
+    spawn_stdout_reader, wait_for_exit,
 };
 use crate::plugin_manager::process::wire::{WireMessage, WireMessageType};
+use crate::plugin_manager::process::wire_io::write_wire_message;
 use crate::plugin_manager::{
     PLUGIN_HEARTBEAT_TIMEOUT_CODE, PLUGIN_RUNTIME_ERROR_CODE, PluginProcessHandle,
     PluginRuntimeError, ProcessExitInfo,
@@ -75,7 +76,7 @@ impl PluginProcessHandle for ChildPluginProcess {
     }
 
     fn send_event(&self, method: &str, payload: Value) -> Result<(), PluginRuntimeError> {
-        crate::plugin_manager::process::io::write_wire_message(
+        crate::plugin_manager::process::wire_io::write_wire_message(
             &mut *self.inner.stdin.lock().map_err(|_| PluginRuntimeError {
                 code: PLUGIN_RUNTIME_ERROR_CODE.to_string(),
                 message: "plugin stdin is unavailable".to_string(),
