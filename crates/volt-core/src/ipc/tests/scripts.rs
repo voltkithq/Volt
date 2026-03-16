@@ -4,8 +4,10 @@ use super::*;
 fn test_ipc_init_script_valid() {
     let script = ipc_init_script();
     assert!(script.contains("window.__volt__"));
-    assert!(script.contains("window.__volt_response__"));
-    assert!(script.contains("window.__volt_event__"));
+    assert!(script.contains("Object.defineProperty(window, '__volt_response__'"));
+    assert!(script.contains("Object.defineProperty(window, '__volt_event__'"));
+    assert!(script.contains("writable: false"));
+    assert!(script.contains("configurable: false"));
     assert!(script.contains("response.errorCode"));
     assert!(script.contains("response.errorDetails"));
 }
@@ -54,6 +56,13 @@ fn test_response_script_escapes_js_line_separators() {
     assert!(!script.contains('\u{2029}'));
     assert!(script.contains("\\u2028"));
     assert!(script.contains("\\u2029"));
+}
+
+#[test]
+fn test_response_script_escapes_null_bytes() {
+    let raw = "{\"id\":\"1\",\"result\":\"nul\0byte\"}";
+    let script = response_script(raw);
+    assert!(script.contains("\\0"));
 }
 
 #[test]

@@ -12,6 +12,7 @@ const STORAGE_DIR: &str = "storage";
 const STORAGE_INDEX_FILE: &str = "_index.json";
 const STORAGE_MAX_KEY_BYTES: usize = 256;
 const STORAGE_MAX_VALUE_BYTES: usize = 1024 * 1024;
+const STORAGE_MAX_TOTAL_BYTES: u64 = 100 * 1024 * 1024;
 
 impl PluginManager {
     pub(super) fn handle_storage_request(
@@ -100,6 +101,7 @@ impl PluginStorage {
     }
 
     fn set(&mut self, key: String, value: String) -> Result<(), PluginRuntimeError> {
+        self.ensure_within_quota(&key, value.len() as u64)?;
         let hash = hash_key(&key);
         write_bytes_atomic(&self.root, &value_path(&hash), value.as_bytes())
             .map_err(storage_error)?;
@@ -128,6 +130,50 @@ impl PluginStorage {
     fn keys(&self) -> Vec<String> {
         self.index.entries.keys().cloned().collect()
     }
+
+    fn ensure_within_quota(
+        &self,
+        key: &str,
+        next_value_bytes: u64,
+    ) -> Result<(), PluginRuntimeError> {
+        let current_total = self.total_value_bytes()?;
+        let replaced_bytes = self.value_bytes_for_key(key)?;
+        let projected_total = current_total
+            .saturating_sub(replaced_bytes)
+            .saturating_add(next_value_bytes);
+        if projected_total > STORAGE_MAX_TOTAL_BYTES {
+            return Err(storage_error(format!(
+                "storage quota exceeded ({} bytes > {} bytes)",
+                projected_total, STORAGE_MAX_TOTAL_BYTES
+            )));
+        }
+        Ok(())
+    }
+
+    fn total_value_bytes(&self) -> Result<u64, PluginRuntimeError> {
+        let mut total = 0_u64;
+        for hash in self.index.entries.values() {
+            let path = self.root.join(value_path(hash));
+            match std::fs::metadata(&path) {
+                Ok(metadata) => total = total.saturating_add(metadata.len()),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(storage_error(error.to_string())),
+            }
+        }
+        Ok(total)
+    }
+
+    fn value_bytes_for_key(&self, key: &str) -> Result<u64, PluginRuntimeError> {
+        let Some(hash) = self.index.entries.get(key) else {
+            return Ok(0);
+        };
+        let path = self.root.join(value_path(hash));
+        match std::fs::metadata(path) {
+            Ok(metadata) => Ok(metadata.len()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(0),
+            Err(error) => Err(storage_error(error.to_string())),
+        }
+    }
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -137,7 +183,16 @@ struct StorageIndex {
 
 fn load_index(root: &Path) -> Result<StorageIndex, String> {
     match volt_core::fs::read_file_text(root, STORAGE_INDEX_FILE) {
-        Ok(contents) => serde_json::from_str(&contents).map_err(|error| error.to_string()),
+        Ok(contents) => match serde_json::from_str(&contents) {
+            Ok(index) => Ok(index),
+            Err(error) => {
+                tracing::warn!(
+                    storage_root = %root.display(),
+                    "plugin storage index is corrupted; rebuilding from an empty index: {error}"
+                );
+                Ok(StorageIndex::default())
+            }
+        },
         Err(volt_core::fs::FsError::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {
             Ok(StorageIndex::default())
         }
@@ -168,7 +223,7 @@ fn reconcile_index(root: &Path, index: &mut StorageIndex) -> Result<(), String> 
         let Some(name) = entry.file_name().to_str().map(str::to_string) else {
             continue;
         };
-        if name.ends_with(".val") && !expected.contains(&name) {
+        if (name.ends_with(".val") && !expected.contains(&name)) || name.ends_with(".tmp") {
             volt_core::fs::remove(root, &name).map_err(|error| error.to_string())?;
             changed = true;
         }
@@ -181,12 +236,12 @@ fn reconcile_index(root: &Path, index: &mut StorageIndex) -> Result<(), String> 
 
 fn write_bytes_atomic(root: &Path, relative_path: &str, data: &[u8]) -> Result<(), String> {
     let temp_path = temp_path(relative_path);
-    let temp_resolved = volt_core::fs::safe_resolve_for_create(root, &temp_path)
-        .map_err(|error| error.to_string())?;
-    let final_resolved = volt_core::fs::safe_resolve_for_create(root, relative_path)
-        .map_err(|error| error.to_string())?;
-    std::fs::write(&temp_resolved, data).map_err(|error| error.to_string())?;
-    replace_path_atomic(&temp_resolved, &final_resolved)
+    volt_core::fs::write_file(root, &temp_path, data).map_err(|error| error.to_string())?;
+    if let Err(error) = volt_core::fs::replace_file(root, &temp_path, relative_path) {
+        let _ = volt_core::fs::remove(root, &temp_path);
+        return Err(error.to_string());
+    }
+    Ok(())
 }
 
 fn hash_key(key: &str) -> String {
@@ -251,47 +306,4 @@ fn storage_error(message: impl Into<String>) -> PluginRuntimeError {
         code: PLUGIN_STORAGE_ERROR_CODE.to_string(),
         message: message.into(),
     }
-}
-
-#[cfg(windows)]
-fn replace_path_atomic(from: &Path, to: &Path) -> Result<(), String> {
-    use std::ffi::OsStr;
-    use std::os::windows::ffi::OsStrExt;
-
-    const MOVEFILE_REPLACE_EXISTING: u32 = 0x1;
-    const MOVEFILE_WRITE_THROUGH: u32 = 0x8;
-
-    #[link(name = "Kernel32")]
-    unsafe extern "system" {
-        fn MoveFileExW(
-            lp_existing_file_name: *const u16,
-            lp_new_file_name: *const u16,
-            dw_flags: u32,
-        ) -> i32;
-    }
-
-    let wide = |path: &Path| -> Vec<u16> {
-        OsStr::new(path.as_os_str())
-            .encode_wide()
-            .chain(std::iter::once(0))
-            .collect()
-    };
-    let from_wide = wide(from);
-    let to_wide = wide(to);
-    let status = unsafe {
-        MoveFileExW(
-            from_wide.as_ptr(),
-            to_wide.as_ptr(),
-            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
-        )
-    };
-    if status == 0 {
-        return Err(std::io::Error::last_os_error().to_string());
-    }
-    Ok(())
-}
-
-#[cfg(not(windows))]
-fn replace_path_atomic(from: &Path, to: &Path) -> Result<(), String> {
-    std::fs::rename(from, to).map_err(|error| error.to_string())
 }

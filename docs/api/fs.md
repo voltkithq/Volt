@@ -191,6 +191,6 @@ interface FileInfo {
 Paths are validated at two layers:
 
 1. **TypeScript layer** — Rejects absolute paths (`/`, `\`, drive letters) and `..` traversal
-2. **Rust layer** — `safe_resolve()` canonicalizes both the base and resolved paths, then verifies the result is under the base directory. Also blocks Windows reserved device names (`CON`, `NUL`, `COM1`, etc.) and symlink escapes
+2. **Rust layer** — `safe_resolve()` canonicalizes both the base and resolved paths, then verifies the result is under the base directory. The actual built-in CRUD operations then execute relative to an opened scoped directory handle, preventing symlink-swapped paths from escaping after validation. Windows reserved device names (`CON`, `NUL`, `COM1`, etc.) and symlink escapes are blocked.
 
-Grant tokens are stored in a global `HashMap<GrantId, PathBuf>` protected by a Mutex. `bindScope` validates the grant exists before creating the scoped handle — invalid or expired grant IDs are rejected.
+Grant tokens are stored in a global `HashMap<GrantId, PathBuf>` protected by a Mutex. Grant IDs are opaque random tokens, and the stored grant root is canonicalized when the grant is created. `bindScope` validates the grant exists before creating the scoped handle — invalid or expired grant IDs are rejected.

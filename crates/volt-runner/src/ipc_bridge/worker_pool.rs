@@ -1,8 +1,10 @@
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::Mutex;
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 use crossbeam_channel as channel;
+use volt_core::ipc::{IPC_HANDLER_ERROR_CODE, IpcResponse};
 
 use super::dispatch::dispatch_ipc_task;
 use super::in_flight::InFlightTracker;
@@ -20,6 +22,26 @@ pub(super) struct IpcDispatchTask {
 pub(super) struct IpcWorkerPool {
     task_tx: Mutex<Option<channel::Sender<IpcDispatchTask>>>,
     worker_handles: Mutex<Vec<JoinHandle<()>>>,
+}
+
+struct InFlightReleaseGuard {
+    tracker: InFlightTracker,
+    js_window_id: String,
+}
+
+impl InFlightReleaseGuard {
+    fn new(tracker: InFlightTracker, js_window_id: String) -> Self {
+        Self {
+            tracker,
+            js_window_id,
+        }
+    }
+}
+
+impl Drop for InFlightReleaseGuard {
+    fn drop(&mut self) {
+        self.tracker.release(&self.js_window_id);
+    }
 }
 
 impl IpcWorkerPool {
@@ -44,17 +66,32 @@ impl IpcWorkerPool {
                         Ok(task) => task,
                         Err(_) => return,
                     };
-
-                    let response = dispatch_ipc_task(
-                        &worker_runtime_client,
-                        worker_plugin_manager.as_ref(),
-                        &task.raw,
-                        &task.request_id,
-                        task.timeout,
+                    let release_guard = InFlightReleaseGuard::new(
+                        worker_tracker.clone(),
+                        task.js_window_id.clone(),
                     );
+                    let dispatch_result = catch_unwind(AssertUnwindSafe(|| {
+                        let response = dispatch_ipc_task(
+                            &worker_runtime_client,
+                            worker_plugin_manager.as_ref(),
+                            &task.raw,
+                            &task.request_id,
+                            task.timeout,
+                        );
 
-                    send_response_to_window(&task.js_window_id, response);
-                    worker_tracker.release(&task.js_window_id);
+                        send_response_to_window(&task.js_window_id, response);
+                    }));
+                    if dispatch_result.is_err() {
+                        send_response_to_window(
+                            &task.js_window_id,
+                            IpcResponse::error_with_code(
+                                task.request_id.clone(),
+                                "IPC worker panicked while dispatching request".to_string(),
+                                IPC_HANDLER_ERROR_CODE.to_string(),
+                            ),
+                        );
+                    }
+                    drop(release_guard);
                 }
             });
 

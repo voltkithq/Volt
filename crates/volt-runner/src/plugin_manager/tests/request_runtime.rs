@@ -160,14 +160,15 @@ fn watchdog_kills_after_two_missed_heartbeats() {
         },
         Duration::from_millis(50),
     );
-    thread::sleep(Duration::from_millis(60));
+    let mut snapshot = manager.get_plugin_state("acme.search").expect("plugin");
+    for _ in 0..50 {
+        if killed.load(Ordering::Relaxed) && snapshot.current_state == PluginState::Failed {
+            break;
+        }
+        thread::sleep(Duration::from_millis(10));
+        snapshot = manager.get_plugin_state("acme.search").expect("plugin");
+    }
 
     assert!(killed.load(Ordering::Relaxed));
-    assert_eq!(
-        manager
-            .get_plugin_state("acme.search")
-            .expect("plugin")
-            .current_state,
-        PluginState::Failed
-    );
+    assert_eq!(snapshot.current_state, PluginState::Failed);
 }

@@ -2,6 +2,8 @@ use serde_json::Value as JsonValue;
 
 use super::{IPC_MAX_REQUEST_BYTES, IpcError, IpcResponse};
 
+pub const IPC_MAX_RESPONSE_BYTES: usize = 16 * 1024 * 1024;
+
 /// Generate the JavaScript IPC initialization script injected into the WebView.
 /// This creates the `window.__volt__` API and the pending request tracking.
 pub fn ipc_init_script() -> String {
@@ -75,43 +77,51 @@ pub fn ipc_init_script() -> String {
     });
 
     // Response handler called from Rust via evaluate_script
-    window.__volt_response__ = function(responseJson) {
-        try {
-            var response = JSON.parse(responseJson);
-            var p = pending.get(response.id);
-            if (p) {
-                pending.delete(response.id);
-                if (response.error) {
-                    var error = new Error(response.error);
-                    if (response.errorCode) {
-                        error.code = response.errorCode;
+    Object.defineProperty(window, '__volt_response__', {
+        value: function(responseJson) {
+            try {
+                var response = JSON.parse(responseJson);
+                var p = pending.get(response.id);
+                if (p) {
+                    pending.delete(response.id);
+                    if (response.error) {
+                        var error = new Error(response.error);
+                        if (response.errorCode) {
+                            error.code = response.errorCode;
+                        }
+                        if (response.errorDetails !== undefined) {
+                            error.details = response.errorDetails;
+                        }
+                        p.reject(error);
+                    } else {
+                        p.resolve(response.result);
                     }
-                    if (response.errorDetails !== undefined) {
-                        error.details = response.errorDetails;
-                    }
-                    p.reject(error);
-                } else {
-                    p.resolve(response.result);
                 }
+            } catch (e) {
+                console.error('[volt] Failed to parse IPC response:', e);
             }
-        } catch (e) {
-            console.error('[volt] Failed to parse IPC response:', e);
-        }
-    };
+        },
+        writable: false,
+        configurable: false,
+    });
 
     // Event handler called from Rust via evaluate_script
-    window.__volt_event__ = function(event, data) {
-        var set = listeners.get(event);
-        if (set) {
-            set.forEach(function(cb) {
-                try {
-                    cb(data);
-                } catch (e) {
-                    console.error('[volt] Event handler error:', e);
-                }
-            });
-        }
-    };
+    Object.defineProperty(window, '__volt_event__', {
+        value: function(event, data) {
+            var set = listeners.get(event);
+            if (set) {
+                set.forEach(function(cb) {
+                    try {
+                        cb(data);
+                    } catch (e) {
+                        console.error('[volt] Event handler error:', e);
+                    }
+                });
+            }
+        },
+        writable: false,
+        configurable: false,
+    });
 
     // Forward CSP violations to native logging so they are visible without DevTools.
     document.addEventListener('securitypolicyviolation', function(e) {
@@ -183,6 +193,7 @@ fn escape_for_single_quoted_js(value: &str) -> String {
         match ch {
             '\\' => escaped.push_str("\\\\"),
             '\'' => escaped.push_str("\\'"),
+            '\0' => escaped.push_str("\\0"),
             '\n' => escaped.push_str("\\n"),
             '\r' => escaped.push_str("\\r"),
             '\u{2028}' => escaped.push_str("\\u2028"),

@@ -55,7 +55,7 @@
 | `webview` | Navigation policy, origin whitelisting, `WebViewConfig` |
 | `ipc` | `IpcRegistry`, `IpcRequest`/`IpcResponse`, `RateLimiter`, prototype pollution guards |
 | `security` | CSP generation (prod/dev), path validation, URL scheme validation, reserved device name blocking |
-| `fs` | `safe_resolve()` with canonicalization, sandboxed CRUD operations |
+| `fs` | `safe_resolve()` with canonicalization plus capability-scoped sandboxed CRUD operations |
 | `embed` | `AssetBundle` (serialize/deserialize/serve), MIME type detection, `volt://` protocol handler |
 | `menu` | `MenuItemConfig`, role-based predefined items, `build_menu()` |
 | `tray` | `TrayConfig` for system tray icons |
