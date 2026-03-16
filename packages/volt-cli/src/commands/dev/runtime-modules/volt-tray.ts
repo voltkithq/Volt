@@ -1,4 +1,5 @@
 import { Tray } from 'voltkit';
+import { devModuleError } from './shared.js';
 
 type TrayClickHandler = (payload: unknown) => void;
 
@@ -17,7 +18,7 @@ function emitTrayClick(payload: unknown): void {
 
 function currentTray(): Tray {
   if (!tray) {
-    throw new Error('Tray is not created. Call create() first.');
+    throw devModuleError('tray', 'Tray is not created. Call create() first.');
   }
   return tray;
 }
@@ -55,7 +56,7 @@ export function destroy(): void {
 
 export function on(eventName: 'click', handler: (payload: unknown) => void): void {
   if (eventName !== 'click') {
-    throw new Error(`Unsupported tray event "${eventName}".`);
+    throw devModuleError('tray', `Unsupported tray event "${eventName}".`);
   }
   clickHandlers.add(handler);
 }
@@ -66,4 +67,3 @@ export function off(eventName: 'click', handler: (payload: unknown) => void): vo
   }
   clickHandlers.delete(handler);
 }
-

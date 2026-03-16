@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { ensureDevPermission, resolveProjectScopedPath } from './shared.js';
+import { devModuleError, ensureDevPermission, resolveProjectScopedPath } from './shared.js';
 
 const storage = new Map<string, string>();
 let loaded = false;
@@ -43,7 +43,7 @@ function persistStorage(): void {
 function normalizeKey(key: string): string {
   const normalized = key.trim();
   if (!normalized) {
-    throw new Error('Secure storage key must be a non-empty string.');
+    throw devModuleError('secureStorage', 'Secure storage key must be a non-empty string.');
   }
   return normalized;
 }

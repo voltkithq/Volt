@@ -70,9 +70,14 @@ export function runtimePermissions(): ReadonlySet<string> {
   return new Set(runtimeState.permissions);
 }
 
+export function devModuleError(moduleName: string, message: string): Error {
+  return new Error(`[volt:${moduleName}] ${message}`);
+}
+
 export function ensureDevPermission(permission: string, apiName: string): void {
   if (!runtimePermissions().has(permission)) {
-    throw new Error(
+    throw devModuleError(
+      permission,
       `Permission denied: ${apiName} requires '${permission}' in volt.config.ts permissions.`,
     );
   }
@@ -81,10 +86,10 @@ export function ensureDevPermission(permission: string, apiName: string): void {
 export function resolveProjectScopedPath(path: string, namespace: string): string {
   const trimmedPath = path.trim();
   if (trimmedPath.length === 0) {
-    throw new Error('Path must be a non-empty string.');
+    throw devModuleError('dev', 'Path must be a non-empty string.');
   }
   if (trimmedPath.includes('\0')) {
-    throw new Error('Path must not include null bytes.');
+    throw devModuleError('dev', 'Path must not include null bytes.');
   }
 
   const safePath = trimmedPath.replace(/\\/g, '/').replace(/^\/+/, '');
@@ -96,7 +101,7 @@ export function resolveProjectScopedPath(path: string, namespace: string): strin
     relativePath !== ''
     && (relativePath.startsWith('..') || isAbsolute(relativePath))
   ) {
-    throw new Error(`Path traversal is not allowed: ${path}`);
+    throw devModuleError('dev', `Path traversal is not allowed: ${path}`);
   }
 
   mkdirSync(dirname(absoluteTargetPath), { recursive: true });
@@ -120,18 +125,18 @@ function resolveEventWindowId(windowId?: string): string {
   if (runtimeState.defaultWindowId.trim().length > 0) {
     return runtimeState.defaultWindowId.trim();
   }
-  throw new Error('No target window ID is available for backend event dispatch.');
+  throw devModuleError('events', 'No target window ID is available for backend event dispatch.');
 }
 
 export function emitFrontendEvent(eventName: string, data?: unknown, windowId?: string): void {
   const event = eventName.trim();
   if (event.length === 0) {
-    throw new Error('Event name must be a non-empty string.');
+    throw devModuleError('events', 'Event name must be a non-empty string.');
   }
 
   const nativeRuntime = runtimeState.nativeRuntime;
   if (!nativeRuntime) {
-    throw new Error('Native runtime bridge is unavailable for backend event dispatch.');
+    throw devModuleError('events', 'Native runtime bridge is unavailable for backend event dispatch.');
   }
 
   const targetWindowId = resolveEventWindowId(windowId);

@@ -1,7 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
-import { resolveProjectScopedPath } from './shared.js';
+import { devModuleError, resolveProjectScopedPath } from './shared.js';
 
 interface ExecuteResult {
   rowsAffected: number;
@@ -12,7 +12,7 @@ let openPath: string | null = null;
 
 function ensureConnection(): DatabaseSync {
   if (!connection) {
-    throw new Error('Database is not open. Call db.open(path) first.');
+    throw devModuleError('db', 'Database is not open. Call db.open(path) first.');
   }
   return connection;
 }
@@ -20,7 +20,7 @@ function ensureConnection(): DatabaseSync {
 function normalizeSql(sql: string): string {
   const statement = sql.trim();
   if (!statement) {
-    throw new Error('SQL statement must be a non-empty string.');
+    throw devModuleError('db', 'SQL statement must be a non-empty string.');
   }
   return statement;
 }
@@ -73,7 +73,7 @@ function toJsonRow(row: Record<string, unknown>): Record<string, unknown> {
 function resolveDatabasePath(path: string): string {
   const trimmedPath = path.trim();
   if (!trimmedPath) {
-    throw new Error('Database path must be a non-empty string.');
+    throw devModuleError('db', 'Database path must be a non-empty string.');
   }
   if (trimmedPath === ':memory:') {
     return trimmedPath;

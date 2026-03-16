@@ -1,6 +1,6 @@
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
-import { ensureDevPermission } from './shared.js';
+import { devModuleError, ensureDevPermission } from './shared.js';
 
 interface HttpFetchRequest {
   url: string;
@@ -57,7 +57,7 @@ function normalizeHeaders(headers: Headers): Record<string, string[]> {
 }
 
 function createBlockedHttpError(reason: string): Error {
-  return new Error(`HTTP request blocked in dev mode: ${reason}.`);
+  return devModuleError('http', `HTTP request blocked in dev mode: ${reason}.`);
 }
 
 function normalizeRequestUrl(url: string): URL {
@@ -65,7 +65,7 @@ function normalizeRequestUrl(url: string): URL {
   try {
     parsed = new URL(url);
   } catch {
-    throw new Error(`Invalid HTTP URL: ${url}`);
+    throw devModuleError('http', `Invalid HTTP URL: ${url}`);
   }
 
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {

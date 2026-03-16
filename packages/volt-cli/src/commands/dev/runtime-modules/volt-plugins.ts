@@ -1,3 +1,5 @@
+import { devModuleError } from './shared.js';
+
 type PluginLifecycleEventName = 'plugin:lifecycle' | 'plugin:failed' | 'plugin:activated';
 type PluginEventHandler = (event: unknown) => void;
 
@@ -6,7 +8,7 @@ const listeners = new Map<PluginLifecycleEventName, Set<PluginEventHandler>>();
 function normalizePluginId(pluginId: string): string {
   const normalized = pluginId.trim();
   if (!normalized) {
-    throw new Error('plugin id must be a non-empty string');
+    throw devModuleError('plugins', 'plugin id must be a non-empty string');
   }
   return normalized;
 }
@@ -14,7 +16,7 @@ function normalizePluginId(pluginId: string): string {
 function normalizeGrantId(grantId: string): string {
   const normalized = grantId.trim();
   if (!normalized) {
-    throw new Error('grant id must be a non-empty string');
+    throw devModuleError('plugins', 'grant id must be a non-empty string');
   }
   return normalized;
 }
@@ -22,7 +24,7 @@ function normalizeGrantId(grantId: string): string {
 function normalizeSurface(surface: string): string {
   const normalized = surface.trim();
   if (!normalized) {
-    throw new Error('surface must be a non-empty string');
+    throw devModuleError('plugins', 'surface must be a non-empty string');
   }
   return normalized;
 }
@@ -35,7 +37,7 @@ function normalizeEventName(eventName: string): PluginLifecycleEventName {
   ) {
     return eventName;
   }
-  throw new Error(`unsupported plugin event '${eventName}'`);
+  throw devModuleError('plugins', `unsupported plugin event '${eventName}'`);
 }
 
 export async function delegateGrant(pluginId: string, grantId: string): Promise<void> {
