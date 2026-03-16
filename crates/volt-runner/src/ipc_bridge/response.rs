@@ -4,11 +4,12 @@ use volt_core::ipc::{
 };
 
 pub(super) fn send_response_to_window(js_window_id: &str, response: IpcResponse) {
+    let request_id = response.id.clone();
     let response_json = match serde_json::to_string(&response) {
         Ok(serialized) => serialized,
         Err(error) => {
             let fallback = IpcResponse::error_with_code(
-                response.id,
+                request_id.clone(),
                 format!("failed to serialize IPC response: {error}"),
                 IPC_HANDLER_ERROR_CODE.to_string(),
             );
@@ -21,7 +22,7 @@ pub(super) fn send_response_to_window(js_window_id: &str, response: IpcResponse)
 
     if response_json.len() > IPC_MAX_RESPONSE_BYTES {
         let truncated = IpcResponse::error_with_code(
-            response.id,
+            request_id,
             format!(
                 "IPC response too large ({} bytes > {} bytes)",
                 response_json.len(),

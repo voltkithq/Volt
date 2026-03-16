@@ -166,7 +166,7 @@ impl AccessRequestOptions {
                 .and_then(Value::as_str)
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
-                .map(|value| sanitize_dialog_title(value)),
+                .map(sanitize_dialog_title),
             directory: object
                 .get("directory")
                 .and_then(Value::as_bool)
