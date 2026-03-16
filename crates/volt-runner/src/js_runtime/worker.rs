@@ -202,6 +202,7 @@ fn execute_request(
         RuntimeRequest::DispatchIpc {
             raw,
             timeout,
+            deadline,
             response_tx,
         } => {
             let response = tokio_runtime.block_on(async {
@@ -211,6 +212,7 @@ fn execute_request(
                     ipc_state,
                     &raw,
                     timeout,
+                    deadline,
                 )
                 .await;
                 let _ = super::bootstrap::run_jobs(context, job_executor).await;

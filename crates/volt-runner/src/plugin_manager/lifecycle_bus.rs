@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::panic::{self, AssertUnwindSafe};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -84,7 +85,14 @@ impl LifecycleBus {
             .unwrap_or_default();
 
         for handler in handlers {
-            handler(&event);
+            if let Err(payload) = panic::catch_unwind(AssertUnwindSafe(|| handler(&event))) {
+                tracing::error!(
+                    panic = %panic_payload_message(&payload),
+                    plugin_id = %event.plugin_id,
+                    new_state = ?event.new_state,
+                    "plugin lifecycle subscriber panicked"
+                );
+            }
         }
     }
 
@@ -99,6 +107,16 @@ impl LifecycleBus {
         }
         id
     }
+}
+
+fn panic_payload_message(payload: &Box<dyn std::any::Any + Send>) -> String {
+    if let Some(message) = payload.downcast_ref::<&str>() {
+        return (*message).to_string();
+    }
+    if let Some(message) = payload.downcast_ref::<String>() {
+        return message.clone();
+    }
+    "unknown panic payload".to_string()
 }
 
 fn topic_matches(topic: LifecycleTopic, event: &PluginLifecycleEvent) -> bool {

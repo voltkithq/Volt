@@ -1,5 +1,5 @@
 use std::sync::mpsc::Sender;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde_json::Value as JsonValue;
 use volt_core::ipc::IpcResponse;
@@ -41,6 +41,7 @@ pub(super) enum RuntimeRequest {
     DispatchIpc {
         raw: String,
         timeout: Duration,
+        deadline: Instant,
         response_tx: Sender<IpcResponse>,
     },
     DispatchNativeEvent {

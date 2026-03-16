@@ -163,3 +163,49 @@ fn failed_and_activated_subscribers_are_filtered_and_off_removes_handlers() {
     );
     assert!(removed.lock().expect("removed").is_empty());
 }
+
+#[test]
+fn lifecycle_bus_recovers_from_panicking_subscribers() {
+    let (_root, manager) = build_manager_with_root("lifecycle-bus-panic");
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let events_for_handler = events.clone();
+
+    manager.on_lifecycle(Box::new(|_| panic!("boom")));
+    manager.on_lifecycle(Box::new(move |event| {
+        events_for_handler
+            .lock()
+            .expect("events")
+            .push(event.new_state);
+    }));
+
+    manager.fail_plugin(
+        "acme.search",
+        "PLUGIN_BROKEN",
+        "boom".to_string(),
+        Some(serde_json::json!({ "attempt": 1 })),
+        None,
+    );
+
+    assert_eq!(*events.lock().expect("events"), vec![PluginState::Failed]);
+}
+
+#[test]
+fn panicking_lifecycle_subscribers_do_not_stop_other_handlers() {
+    let (_root, manager) = build_manager_with_root("lifecycle-bus-panic");
+    let observed = Arc::new(Mutex::new(Vec::new()));
+    manager.on_lifecycle(Box::new(|_| panic!("boom")));
+    let observed_for_handler = observed.clone();
+    manager.on_lifecycle(Box::new(move |event| {
+        observed_for_handler
+            .lock()
+            .expect("observed")
+            .push(event.new_state);
+    }));
+
+    manager.discover_plugins();
+
+    assert_eq!(
+        *observed.lock().expect("observed"),
+        vec![PluginState::Discovered, PluginState::Validated]
+    );
+}

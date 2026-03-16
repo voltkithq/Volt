@@ -8,6 +8,7 @@ interface DevRuntimeModuleState {
   projectRoot: string;
   defaultWindowId: string;
   nativeRuntime: NativeScriptBridge | null;
+  permissions: string[];
 }
 
 const GLOBAL_RUNTIME_STATE_KEY = '__VOLT_DEV_RUNTIME_MODULE_STATE__';
@@ -17,6 +18,7 @@ function createDefaultRuntimeState(): DevRuntimeModuleState {
     projectRoot: process.cwd(),
     defaultWindowId: '',
     nativeRuntime: null,
+    permissions: [],
   };
 }
 
@@ -45,16 +47,35 @@ export function configureRuntimeModuleState(next: Partial<DevRuntimeModuleState>
   if (next.nativeRuntime !== undefined) {
     runtimeState.nativeRuntime = next.nativeRuntime;
   }
+  if (Array.isArray(next.permissions)) {
+    runtimeState.permissions = next.permissions
+      .filter((permission): permission is string => typeof permission === 'string')
+      .map((permission) => permission.trim())
+      .filter((permission) => permission.length > 0);
+  }
 }
 
 export function resetRuntimeModuleState(): void {
   runtimeState.projectRoot = process.cwd();
   runtimeState.defaultWindowId = '';
   runtimeState.nativeRuntime = null;
+  runtimeState.permissions = [];
 }
 
 export function projectRoot(): string {
   return runtimeState.projectRoot;
+}
+
+export function runtimePermissions(): ReadonlySet<string> {
+  return new Set(runtimeState.permissions);
+}
+
+export function ensureDevPermission(permission: string, apiName: string): void {
+  if (!runtimePermissions().has(permission)) {
+    throw new Error(
+      `Permission denied: ${apiName} requires '${permission}' in volt.config.ts permissions.`,
+    );
+  }
 }
 
 export function resolveProjectScopedPath(path: string, namespace: string): string {

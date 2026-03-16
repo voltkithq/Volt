@@ -146,6 +146,7 @@ pub(super) fn spawn_exit_watcher(process: Arc<ChildPluginProcessInner>) {
                 .ok()
                 .and_then(|mut child| child.wait().ok())
                 .and_then(|status| status.code());
+            drain_waiters(&process.waiters);
             notify_exit(&process.exit, ProcessExitInfo { code: exit_code });
         });
 }
@@ -199,8 +200,10 @@ fn read_plugin_stdout(process: Arc<ChildPluginProcessInner>, stdout: ChildStdout
     loop {
         let message = match read_wire_message(&mut reader) {
             Ok(Some(message)) => message,
-            Ok(None) => return,
-            Err(_) => return,
+            Ok(None) | Err(_) => {
+                drain_waiters(&process.waiters);
+                return;
+            }
         };
 
         if message.message_type == WireMessageType::Signal && message.method == "ready" {
@@ -246,6 +249,12 @@ fn notify_exit(exit_state: &ExitState, exit: ProcessExitInfo) {
     }
 }
 
+pub(super) fn drain_waiters(waiters: &Mutex<HashMap<String, mpsc::Sender<WireMessage>>>) {
+    if let Ok(mut waiters) = waiters.lock() {
+        waiters.clear();
+    }
+}
+
 fn read_wire_message<R: Read>(reader: &mut BufReader<R>) -> std::io::Result<Option<WireMessage>> {
     let mut len_buf = [0_u8; 4];
     match reader.read_exact(&mut len_buf) {
@@ -270,4 +279,24 @@ fn read_wire_message<R: Read>(reader: &mut BufReader<R>) -> std::io::Result<Opti
     serde_json::from_str(trimmed)
         .map(Some)
         .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn drain_waiters_disconnects_pending_receivers() {
+        let waiters = Mutex::new(HashMap::new());
+        let (tx, rx) = mpsc::channel();
+        waiters
+            .lock()
+            .expect("waiters lock")
+            .insert("req-1".to_string(), tx);
+
+        drain_waiters(&waiters);
+
+        assert!(matches!(rx.recv(), Err(mpsc::RecvError)));
+        assert!(waiters.lock().expect("waiters lock").is_empty());
+    }
 }

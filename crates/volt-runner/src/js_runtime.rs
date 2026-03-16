@@ -1,10 +1,10 @@
 use std::path::PathBuf;
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::thread::{self, JoinHandle};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde_json::Value as JsonValue;
-use volt_core::ipc::{IPC_HANDLER_TIMEOUT_CODE, IpcResponse};
+use volt_core::ipc::IpcResponse;
 
 use crate::plugin_manager::PluginManager;
 
@@ -178,11 +178,14 @@ impl JsRuntimeClient {
         timeout: Duration,
     ) -> Result<IpcResponse, String> {
         let response_timeout = normalize_ipc_timeout(timeout);
+        let wait_started_at = Instant::now();
+        let deadline = Instant::now() + response_timeout;
         let (response_tx, response_rx) = mpsc::channel();
         self.request_tx
             .send(RuntimeRequest::DispatchIpc {
                 raw: raw.to_string(),
                 timeout: response_timeout,
+                deadline,
                 response_tx,
             })
             .map_err(|_| "js runtime worker is not running".to_string())?;
@@ -191,17 +194,11 @@ impl JsRuntimeClient {
             Ok(response) => Ok(response),
             Err(RecvTimeoutError::Timeout) => {
                 let method = serde_support::extract_ipc_method(raw);
-                Ok(IpcResponse::error_with_details(
+                Ok(serde_support::ipc_timeout_response(
                     serde_support::extract_ipc_request_id(raw),
-                    format!(
-                        "IPC handler '{method}' timed out after {}ms before the runtime returned a response",
-                        response_timeout.as_millis()
-                    ),
-                    IPC_HANDLER_TIMEOUT_CODE.to_string(),
-                    serde_json::json!({
-                        "timeoutMs": response_timeout.as_millis(),
-                        "method": method
-                    }),
+                    method,
+                    response_timeout,
+                    wait_started_at.elapsed().min(response_timeout),
                 ))
             }
             Err(RecvTimeoutError::Disconnected) => {
@@ -267,4 +264,22 @@ pub(crate) fn normalize_ipc_timeout(timeout: Duration) -> Duration {
     } else {
         timeout
     }
+}
+
+pub(crate) fn ipc_inner_timeout_budget(timeout: Duration) -> Duration {
+    let timeout_ms = timeout.as_millis();
+    let margin = if timeout_ms > 1_000 {
+        Duration::from_millis(1_000)
+    } else if timeout_ms > 10 {
+        Duration::from_millis(10)
+    } else if timeout_ms > 1 {
+        Duration::from_millis(1)
+    } else {
+        Duration::ZERO
+    };
+
+    timeout
+        .checked_sub(margin)
+        .filter(|budget| !budget.is_zero())
+        .unwrap_or(timeout)
 }
