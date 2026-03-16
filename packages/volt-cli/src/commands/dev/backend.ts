@@ -3,6 +3,7 @@ import { existsSync, rmSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { resolveBackendEntry } from '../build/backend.js';
+import { resetIpcRuntimeState } from './ipc.js';
 import { createScopedTempDirectory, recoverStaleScopedDirectories } from '../../utils/temp-artifacts.js';
 
 const RUNTIME_MODULES_DIR = resolve(
@@ -29,6 +30,7 @@ const VOLT_RUNTIME_MODULE_TO_STEM: Record<string, string> = {
   'volt:shell': 'volt-shell',
   'volt:notification': 'volt-notification',
   'volt:http': 'volt-http',
+  'volt:plugins': 'volt-plugins',
   'volt:bench': 'volt-bench',
   'volt:updater': 'volt-updater',
 };
@@ -129,6 +131,7 @@ export async function loadBackendEntrypointForDev(
     });
 
     const backendUrl = `${pathToFileURL(backendBundlePath).href}?t=${Date.now()}`;
+    resetIpcRuntimeState();
     await import(backendUrl);
 
     return {
@@ -147,6 +150,7 @@ export async function loadBackendEntrypointForDev(
                 return;
               }
               try {
+                resetIpcRuntimeState();
                 const url = `${pathToFileURL(backendBundlePath).href}?t=${Date.now()}`;
                 await import(url);
                 console.log('[volt] Backend reloaded.');

@@ -10,7 +10,6 @@ pub struct GrantDelegation {
     pub grant_id: String,
     pub plugin_id: String,
     pub delegated_at: u64,
-    pub revoked: bool,
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -49,55 +48,63 @@ pub fn delegate_grant(plugin_id: &str, grant_id: &str) -> Result<(), PluginGrant
 
     with_store(|store| {
         let delegations = store.entry(plugin_id.to_string()).or_default();
-        match delegations.get_mut(grant_id) {
-            Some(delegation) if !delegation.revoked => Err(PluginGrantError::AlreadyDelegated),
-            Some(delegation) => {
-                delegation.delegated_at = now_ms();
-                delegation.revoked = false;
-                Ok(())
-            }
-            None => {
-                delegations.insert(
-                    grant_id.to_string(),
-                    GrantDelegation {
-                        grant_id: grant_id.to_string(),
-                        plugin_id: plugin_id.to_string(),
-                        delegated_at: now_ms(),
-                        revoked: false,
-                    },
-                );
-                Ok(())
-            }
+        if delegations.contains_key(grant_id) {
+            Err(PluginGrantError::AlreadyDelegated)
+        } else {
+            delegations.insert(
+                grant_id.to_string(),
+                GrantDelegation {
+                    grant_id: grant_id.to_string(),
+                    plugin_id: plugin_id.to_string(),
+                    delegated_at: now_ms(),
+                },
+            );
+            Ok(())
         }
     })
 }
 
 pub fn revoke_grant(plugin_id: &str, grant_id: &str) {
     with_store(|store| {
-        if let Some(delegations) = store.get_mut(plugin_id)
-            && let Some(delegation) = delegations.get_mut(grant_id)
-        {
-            delegation.revoked = true;
+        if let Some(delegations) = store.get_mut(plugin_id) {
+            delegations.remove(grant_id);
+            if delegations.is_empty() {
+                store.remove(plugin_id);
+            }
         }
     });
 }
 
 pub fn revoke_all_grants(plugin_id: &str) {
     with_store(|store| {
-        if let Some(delegations) = store.get_mut(plugin_id) {
-            for delegation in delegations.values_mut() {
-                delegation.revoked = true;
+        store.remove(plugin_id);
+    });
+}
+
+pub fn revoke_grant_everywhere(grant_id: &str) -> bool {
+    with_store(|store| {
+        let mut removed = false;
+        let mut empty_plugins = Vec::new();
+        for (plugin_id, delegations) in store.iter_mut() {
+            if delegations.remove(grant_id).is_some() {
+                removed = true;
+            }
+            if delegations.is_empty() {
+                empty_plugins.push(plugin_id.clone());
             }
         }
-    });
+        for plugin_id in empty_plugins {
+            store.remove(&plugin_id);
+        }
+        removed
+    })
 }
 
 pub fn is_delegated(plugin_id: &str, grant_id: &str) -> bool {
     with_store(|store| {
         store
             .get(plugin_id)
-            .and_then(|delegations| delegations.get(grant_id))
-            .is_some_and(|delegation| !delegation.revoked)
+            .is_some_and(|delegations| delegations.contains_key(grant_id))
     })
 }
 
@@ -106,9 +113,8 @@ pub fn list_delegated_grants(plugin_id: &str) -> Vec<String> {
         let mut grant_ids = store
             .get(plugin_id)
             .into_iter()
-            .flat_map(|delegations| delegations.values())
-            .filter(|delegation| !delegation.revoked)
-            .map(|delegation| delegation.grant_id.clone())
+            .flat_map(|delegations| delegations.keys())
+            .cloned()
             .collect::<Vec<_>>();
         grant_ids.sort();
         grant_ids
@@ -192,5 +198,17 @@ mod tests {
         assert!(!is_delegated("acme.search", &second));
         assert!(grant_store::resolve_grant(&first).is_ok());
         assert!(grant_store::resolve_grant(&second).is_ok());
+    }
+
+    #[test]
+    fn revoke_grant_everywhere_prunes_empty_plugin_entries() {
+        let _guard = lock_grant_state();
+        let grant_id = create_grant();
+
+        delegate_grant("acme.search", &grant_id).expect("delegate");
+        assert!(revoke_grant_everywhere(&grant_id));
+
+        assert!(!is_delegated("acme.search", &grant_id));
+        assert!(list_delegated_grants("acme.search").is_empty());
     }
 }

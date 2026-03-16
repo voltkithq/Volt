@@ -20,6 +20,11 @@ impl PluginManager {
         operation: &str,
         payload: &Value,
     ) -> Result<Value, PluginRuntimeError> {
+        // Plugin storage requests are serialized per plugin today:
+        // the host reads one plugin message at a time and the plugin-side
+        // request API waits synchronously for the reply before sending the
+        // next storage operation. If that transport model changes, this code
+        // will need an explicit per-plugin storage lock.
         let (storage_root, should_reconcile) = self.prepare_storage_root(plugin_id)?;
         let mut storage =
             PluginStorage::open(&storage_root, should_reconcile).map_err(storage_error)?;
@@ -186,7 +191,11 @@ fn write_bytes_atomic(root: &Path, relative_path: &str, data: &[u8]) -> Result<(
     let final_resolved = volt_core::fs::safe_resolve_for_create(root, relative_path)
         .map_err(|error| error.to_string())?;
     std::fs::write(&temp_resolved, data).map_err(|error| error.to_string())?;
-    replace_path_atomic(&temp_resolved, &final_resolved)
+    if let Err(error) = replace_path_atomic(&temp_resolved, &final_resolved) {
+        let _ = std::fs::remove_file(&temp_resolved);
+        return Err(error);
+    }
+    Ok(())
 }
 
 fn hash_key(key: &str) -> String {

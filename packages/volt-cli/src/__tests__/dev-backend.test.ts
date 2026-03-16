@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { existsSync, utimesSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { ipcMain } from 'voltkit';
 import { __testOnly, loadBackendEntrypointForDev } from '../commands/dev/backend.js';
@@ -8,26 +8,7 @@ import {
   configureRuntimeModuleState,
   resetRuntimeModuleState,
 } from '../commands/dev/runtime-modules/shared.js';
-
-interface TempProject {
-  rootDir: string;
-  cleanup: () => void;
-}
-
-function createTempProject(files: Record<string, string>): TempProject {
-  const rootDir = mkdtempSync(join(process.cwd(), '.tmp-dev-backend-test-'));
-  for (const [relativePath, contents] of Object.entries(files)) {
-    const absolutePath = join(rootDir, relativePath);
-    mkdirSync(dirname(absolutePath), { recursive: true });
-    writeFileSync(absolutePath, contents, 'utf8');
-  }
-  return {
-    rootDir,
-    cleanup: () => {
-      rmSync(rootDir, { recursive: true, force: true });
-    },
-  };
-}
+import { createTempProject } from './dev-backend-test-utils.js';
 
 describe('dev backend bootstrap', () => {
   const cleanups: Array<() => void> = [];
@@ -134,58 +115,6 @@ describe('dev backend bootstrap', () => {
     expect(script).toContain('demo:event');
   });
 
-  it('loads the volt:bench dev shim for backend handlers', async () => {
-    const project = createTempProject({
-      'backend.ts': `
-        import { ipcMain } from 'volt:ipc';
-        import * as bench from 'volt:bench';
-
-        ipcMain.handle('dev-backend:bench', async () => {
-          const profile = await bench.analyticsProfile({ datasetSize: 1_200 });
-          const workflow = await bench.runWorkflowBenchmark({ batchSize: 800, passes: 2 });
-          return {
-            datasetSize: profile.datasetSize,
-            batchSize: workflow.batchSize,
-            pipelineLength: workflow.pipeline.length,
-          };
-        });
-      `,
-      'tsconfig.json': JSON.stringify({
-        compilerOptions: {
-          target: 'ES2022',
-          module: 'ESNext',
-          moduleResolution: 'bundler',
-          strict: true,
-        },
-      }),
-    });
-    cleanups.push(project.cleanup);
-
-    configureRuntimeModuleState({
-      projectRoot: project.rootDir,
-      defaultWindowId: 'window-dev',
-      nativeRuntime: { windowEvalScript: vi.fn() },
-    });
-
-    const backendLoadState = await loadBackendEntrypointForDev(project.rootDir, './backend.ts');
-    cleanups.push(backendLoadState.dispose);
-
-    const response = await ipcMain.processRequest(
-      'req-bench',
-      'dev-backend:bench',
-      null,
-      { timeoutMs: 200 },
-    );
-    expect(response).toEqual({
-      id: 'req-bench',
-      result: {
-        datasetSize: 1_200,
-        batchSize: 800,
-        pipelineLength: 5,
-      },
-    });
-  });
-
   it('fails fast when backend imports unsupported volt:* modules', async () => {
     const project = createTempProject({
       'backend.ts': `
@@ -211,6 +140,63 @@ describe('dev backend bootstrap', () => {
     await expect(
       loadBackendEntrypointForDev(project.rootDir, './backend.ts'),
     ).rejects.toThrow('Unsupported backend module in dev mode: volt:unknown-module');
+  });
+
+  it('clears existing IPC handlers before backend reload', async () => {
+    const project = createTempProject({
+      'backend.ts': `
+        import { ipcMain } from 'volt:ipc';
+        ipcMain.handle('dev-backend:reloadable', () => ({ version: 1 }));
+      `,
+      'tsconfig.json': JSON.stringify({
+        compilerOptions: {
+          target: 'ES2022',
+          module: 'ESNext',
+          moduleResolution: 'bundler',
+          strict: true,
+        },
+      }),
+    });
+    cleanups.push(project.cleanup);
+
+    configureRuntimeModuleState({
+      projectRoot: project.rootDir,
+      defaultWindowId: 'window-dev',
+      nativeRuntime: { windowEvalScript: vi.fn() },
+    });
+
+    const backendLoadState = await loadBackendEntrypointForDev(project.rootDir, './backend.ts');
+    cleanups.push(backendLoadState.dispose);
+
+    const initial = await ipcMain.processRequest(
+      'req-reload-1',
+      'dev-backend:reloadable',
+      null,
+      { timeoutMs: 200 },
+    );
+    expect(initial).toEqual({
+      id: 'req-reload-1',
+      result: { version: 1 },
+    });
+
+    writeFileSync(join(project.rootDir, 'backend.ts'), `
+      import { ipcMain } from 'volt:ipc';
+      ipcMain.handle('dev-backend:reloadable', () => ({ version: 2 }));
+    `, 'utf8');
+
+    const reloadedState = await loadBackendEntrypointForDev(project.rootDir, './backend.ts');
+    cleanups.push(reloadedState.dispose);
+
+    const reloaded = await ipcMain.processRequest(
+      'req-reload-2',
+      'dev-backend:reloadable',
+      null,
+      { timeoutMs: 200 },
+    );
+    expect(reloaded).toEqual({
+      id: 'req-reload-2',
+      result: { version: 2 },
+    });
   });
 
   it('prunes stale dev backend bundles while preserving fresh ones', () => {

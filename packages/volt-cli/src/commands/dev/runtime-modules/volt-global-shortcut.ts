@@ -1,4 +1,5 @@
 import { globalShortcut } from 'voltkit';
+import { devModuleError } from './shared.js';
 
 type ShortcutHandler = (payload: unknown) => void;
 
@@ -19,7 +20,7 @@ function emitTriggered(payload: unknown): void {
 export async function register(accelerator: string): Promise<number> {
   const normalizedAccelerator = accelerator.trim();
   if (!normalizedAccelerator) {
-    throw new Error('Accelerator must be a non-empty string.');
+    throw devModuleError('globalShortcut', 'Accelerator must be a non-empty string.');
   }
 
   const existing = registrations.get(normalizedAccelerator);
@@ -34,7 +35,10 @@ export async function register(accelerator: string): Promise<number> {
     emitTriggered({ id, accelerator: normalizedAccelerator });
   });
   if (!registered) {
-    throw new Error(`Global shortcut already registered: ${normalizedAccelerator}`);
+    throw devModuleError(
+      'globalShortcut',
+      `Global shortcut already registered: ${normalizedAccelerator}`,
+    );
   }
 
   registrations.set(normalizedAccelerator, id);
@@ -57,7 +61,7 @@ export async function unregisterAll(): Promise<void> {
 
 export function on(eventName: 'triggered', handler: (payload: unknown) => void): void {
   if (eventName !== 'triggered') {
-    throw new Error(`Unsupported shortcut event "${eventName}".`);
+    throw devModuleError('globalShortcut', `Unsupported shortcut event "${eventName}".`);
   }
   listeners.add(handler);
 }
@@ -68,4 +72,3 @@ export function off(eventName: 'triggered', handler: (payload: unknown) => void)
   }
   listeners.delete(handler);
 }
-

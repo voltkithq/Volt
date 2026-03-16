@@ -41,14 +41,19 @@ pub(super) fn send_and_wait(
             .waiters
             .lock()
             .map(|mut waiters| waiters.remove(&message.id));
-        let code = if matches!(error, mpsc::RecvTimeoutError::Timeout) {
-            "TIMEOUT"
-        } else {
-            PLUGIN_RUNTIME_ERROR_CODE
+        let (code, message_text) = match error {
+            mpsc::RecvTimeoutError::Timeout => (
+                "TIMEOUT",
+                format!("plugin did not respond in {}ms", timeout.as_millis()),
+            ),
+            mpsc::RecvTimeoutError::Disconnected => (
+                PLUGIN_RUNTIME_ERROR_CODE,
+                "plugin transport closed before a response was received".to_string(),
+            ),
         };
         PluginRuntimeError {
             code: code.to_string(),
-            message: format!("plugin did not respond in {}ms", timeout.as_millis()),
+            message: message_text,
         }
     })
 }

@@ -1,6 +1,8 @@
-use std::time::Duration;
+use std::sync::mpsc;
+use std::time::{Duration, Instant};
 
 use super::*;
+use crate::js_runtime::requests::RuntimeRequest;
 
 #[test]
 fn ipc_roundtrip_supports_sync_and_async_handlers() {
@@ -168,6 +170,68 @@ fn ipc_dispatch_timeout_is_end_to_end_for_sync_handlers() {
             .as_deref()
             .is_some_and(|message| message.contains("timed out after 5ms"))
     );
+}
+
+#[test]
+fn queued_ipc_requests_consume_the_same_end_to_end_timeout_budget() {
+    let runtime = JsRuntimeManager::start().expect("js runtime start");
+    let client = runtime.client();
+
+    client
+        .eval_promise_string(
+            "(async () => {
+                    const { ipcMain } = await import('volt:ipc');
+                    ipcMain.handle('busy-sync', () => {
+                        const startedAt = Date.now();
+                        while ((Date.now() - startedAt) < 50) {
+                        }
+                        return 'done';
+                    });
+                    ipcMain.handle('fast', () => 'ok');
+                    return 'registered';
+                })()",
+        )
+        .expect("register busy and fast handlers");
+
+    let busy_timeout = Duration::from_millis(200);
+    let (busy_response_tx, busy_response_rx) = mpsc::channel();
+    client
+        .request_tx
+        .send(RuntimeRequest::DispatchIpc {
+            raw: r#"{"id":"busy-1","method":"busy-sync","args":null}"#.to_string(),
+            timeout: busy_timeout,
+            deadline: Instant::now() + busy_timeout,
+            response_tx: busy_response_tx,
+        })
+        .expect("queue busy request");
+
+    let response = client
+        .dispatch_ipc_message(
+            r#"{"id":"queued-timeout-1","method":"fast","args":null}"#,
+            Duration::from_millis(20),
+        )
+        .expect("queued request response");
+
+    assert_eq!(response.id, "queued-timeout-1");
+    assert!(response.result.is_none());
+    assert_eq!(
+        response.error_code.as_deref(),
+        Some(IPC_HANDLER_TIMEOUT_CODE)
+    );
+    assert!(
+        response
+            .error_details
+            .as_ref()
+            .and_then(|details| details.get("queueDelayMs"))
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or_default()
+            > 0
+    );
+
+    let busy_response = busy_response_rx
+        .recv_timeout(Duration::from_secs(1))
+        .expect("busy response");
+    assert_eq!(busy_response.result, Some(serde_json::json!("done")));
 }
 
 #[test]

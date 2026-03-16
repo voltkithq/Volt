@@ -1,4 +1,5 @@
 import { Menu, type MenuItemOptions } from 'voltkit';
+import { devModuleError } from './shared.js';
 
 type MenuClickHandler = (payload: unknown) => void;
 
@@ -46,7 +47,7 @@ function decorateMenuItem(raw: unknown): MenuItemOptions {
 
 function normalizeTemplate(template: unknown): MenuItemOptions[] {
   if (!Array.isArray(template)) {
-    throw new Error('Menu template must be an array.');
+    throw devModuleError('menu', 'Menu template must be an array.');
   }
   return template.map((item) => decorateMenuItem(item));
 }
@@ -58,7 +59,7 @@ export async function setAppMenu(template: unknown): Promise<void> {
 
 export function on(eventName: 'click', handler: (payload: unknown) => void): void {
   if (eventName !== 'click') {
-    throw new Error(`Unsupported menu event "${eventName}".`);
+    throw devModuleError('menu', `Unsupported menu event "${eventName}".`);
   }
   clickHandlers.add(handler);
 }
@@ -69,4 +70,3 @@ export function off(eventName: 'click', handler: (payload: unknown) => void): vo
   }
   clickHandlers.delete(handler);
 }
-

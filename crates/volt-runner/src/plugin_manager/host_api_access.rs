@@ -141,7 +141,10 @@ impl PluginManager {
                 message: format!("grant '{grant_id}' is not delegated to plugin '{plugin_id}'"),
             });
         }
-        volt_core::grant_store::resolve_grant(grant_id).map_err(fs_error)
+        volt_core::grant_store::resolve_grant(grant_id).map_err(|error| PluginRuntimeError {
+            code: PLUGIN_FS_ERROR_CODE.to_string(),
+            message: format!("grant '{grant_id}' is unavailable for plugin '{plugin_id}': {error}"),
+        })
     }
 }
 
@@ -195,13 +198,6 @@ fn access_error(message: String) -> PluginRuntimeError {
 fn access_registry_error(error: impl std::fmt::Display) -> PluginRuntimeError {
     PluginRuntimeError {
         code: PLUGIN_ACCESS_ERROR_CODE.to_string(),
-        message: error.to_string(),
-    }
-}
-
-fn fs_error(error: impl std::fmt::Display) -> PluginRuntimeError {
-    PluginRuntimeError {
-        code: PLUGIN_FS_ERROR_CODE.to_string(),
         message: error.to_string(),
     }
 }

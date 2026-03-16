@@ -81,7 +81,11 @@ pub fn resolve_grant(id: &str) -> Result<PathBuf, GrantError> {
 /// Revoke a grant, removing it from the store.
 /// Returns true if the grant existed and was removed.
 pub fn revoke_grant(id: &str) -> bool {
-    with_store(|store| store.remove(id).is_some())
+    let removed = with_store(|store| store.remove(id).is_some());
+    if removed {
+        crate::plugin_grant_registry::revoke_grant_everywhere(id);
+    }
+    removed
 }
 
 /// Clear all grants. Intended for testing and app shutdown.
@@ -128,6 +132,26 @@ mod tests {
         assert!(revoke_grant(&id));
         assert!(!revoke_grant(&id)); // second revoke returns false
         assert!(resolve_grant(&id).is_err());
+    }
+
+    #[test]
+    fn test_revoke_grant_removes_plugin_delegations() {
+        let _guard = lock_grant_state();
+        let dir = env::temp_dir();
+        let id = create_grant(dir).unwrap();
+
+        crate::plugin_grant_registry::delegate_grant("acme.search", &id).expect("delegate grant");
+        assert!(crate::plugin_grant_registry::is_delegated(
+            "acme.search",
+            &id
+        ));
+
+        assert!(revoke_grant(&id));
+
+        assert!(!crate::plugin_grant_registry::is_delegated(
+            "acme.search",
+            &id
+        ));
     }
 
     #[test]
