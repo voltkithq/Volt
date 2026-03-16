@@ -45,6 +45,7 @@ impl Default for FakePlan {
 pub(super) enum FakeOutcome {
     #[default]
     Ok,
+    DelayOk(u64),
     Timeout,
     Error(&'static str),
     Crash(i32),
@@ -114,6 +115,10 @@ impl PluginProcessHandle for FakeProcessHandle {
     fn wait_for_ready(&self, _timeout: Duration) -> Result<(), PluginRuntimeError> {
         match self.plan.lock().expect("plan").ready.clone() {
             FakeOutcome::Ok => Ok(()),
+            FakeOutcome::DelayOk(delay_ms) => {
+                std::thread::sleep(Duration::from_millis(delay_ms));
+                Ok(())
+            }
             FakeOutcome::Timeout => Err(PluginRuntimeError {
                 code: "TIMEOUT".to_string(),
                 message: "ready timeout".to_string(),
@@ -135,6 +140,10 @@ impl PluginProcessHandle for FakeProcessHandle {
     fn activate(&self, _timeout: Duration) -> Result<(), PluginRuntimeError> {
         match self.plan.lock().expect("plan").activate.clone() {
             FakeOutcome::Ok => Ok(()),
+            FakeOutcome::DelayOk(delay_ms) => {
+                std::thread::sleep(Duration::from_millis(delay_ms));
+                Ok(())
+            }
             FakeOutcome::Timeout => Err(PluginRuntimeError {
                 code: "TIMEOUT".to_string(),
                 message: "activate timeout".to_string(),
@@ -224,6 +233,10 @@ impl PluginProcessHandle for FakeProcessHandle {
         };
         match outcome {
             FakeOutcome::Ok => Ok(()),
+            FakeOutcome::DelayOk(delay_ms) => {
+                std::thread::sleep(Duration::from_millis(delay_ms));
+                Ok(())
+            }
             FakeOutcome::Timeout => Err(PluginRuntimeError {
                 code: PLUGIN_HEARTBEAT_TIMEOUT_CODE.to_string(),
                 message: "heartbeat timeout".to_string(),
@@ -245,6 +258,11 @@ impl PluginProcessHandle for FakeProcessHandle {
     fn deactivate(&self, _timeout: Duration) -> Result<(), PluginRuntimeError> {
         match self.plan.lock().expect("plan").deactivate.clone() {
             FakeOutcome::Ok => {
+                self.notify_exit(0);
+                Ok(())
+            }
+            FakeOutcome::DelayOk(delay_ms) => {
+                std::thread::sleep(Duration::from_millis(delay_ms));
                 self.notify_exit(0);
                 Ok(())
             }

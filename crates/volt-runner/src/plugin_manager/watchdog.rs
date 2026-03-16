@@ -27,9 +27,8 @@ impl PluginManager {
                 .get(plugin_id)
                 .map(|record| record.lifecycle.current_state())
             {
-                Some(
-                    PluginState::Deactivating | PluginState::Terminated | PluginState::Disabled,
-                ) => self
+                Some(PluginState::Disabled) => Vec::new(),
+                Some(PluginState::Deactivating | PluginState::Terminated) => self
                     .transition_plugin_locked(&mut registry, plugin_id, PluginState::Terminated)
                     .map(|event| vec![event])
                     .unwrap_or_default(),

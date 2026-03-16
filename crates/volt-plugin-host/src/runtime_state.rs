@@ -4,14 +4,14 @@ use std::io::{self, BufReader};
 
 use serde_json::Value;
 
-use crate::config::DelegatedGrant;
-use crate::config::PluginConfig;
+use crate::config::{DelegatedGrant, HostIpcSettings, PluginConfig};
 use crate::ipc::{IpcMessage, MessageType, read_message, write_message};
 
 struct RuntimeState {
     plugin_id: String,
     manifest: Value,
     delegated_grants: Vec<DelegatedGrant>,
+    max_deferred_messages: usize,
     transport: Transport,
 }
 
@@ -36,11 +36,13 @@ thread_local! {
 }
 
 pub fn configure_stdio(config: &PluginConfig) {
+    let host_ipc_settings = config.host_ipc_settings.clone().unwrap_or_default();
     STATE.with(|state| {
         *state.borrow_mut() = Some(RuntimeState {
             plugin_id: config.plugin_id.clone(),
             manifest: config.manifest.clone(),
             delegated_grants: config.delegated_grants.clone(),
+            max_deferred_messages: max_deferred_messages(&host_ipc_settings),
             transport: Transport::StdIo {
                 reader: BufReader::new(std::io::stdin()),
                 writer: std::io::stdout(),
@@ -157,7 +159,9 @@ pub fn send_request(method: impl Into<String>, payload: Value) -> Result<Value, 
                 continue;
             }
 
-            runtime.transport.defer(message);
+            runtime
+                .transport
+                .defer(message, runtime.max_deferred_messages)?;
         }
     })
 }
@@ -189,11 +193,29 @@ impl Transport {
         }
     }
 
-    fn defer(&mut self, message: IpcMessage) {
+    fn defer(&mut self, message: IpcMessage, max_deferred_messages: usize) -> Result<(), String> {
         match self {
-            Self::StdIo { deferred, .. } => deferred.push_back(message),
+            Self::StdIo { deferred, .. } => {
+                if deferred.len() >= max_deferred_messages {
+                    return Err(format!(
+                        "host deferred message queue exceeded {} messages while waiting for a synchronous response",
+                        max_deferred_messages
+                    ));
+                }
+                deferred.push_back(message);
+                Ok(())
+            }
             #[cfg(test)]
-            Self::Mock { deferred, .. } => deferred.push_back(message),
+            Self::Mock { deferred, .. } => {
+                if deferred.len() >= max_deferred_messages {
+                    return Err(format!(
+                        "host deferred message queue exceeded {} messages while waiting for a synchronous response",
+                        max_deferred_messages
+                    ));
+                }
+                deferred.push_back(message);
+                Ok(())
+            }
         }
     }
 
@@ -243,11 +265,13 @@ impl Transport {
 
 #[cfg(test)]
 pub(crate) fn configure_mock(config: &PluginConfig, inbound: Vec<IpcMessage>) {
+    let host_ipc_settings = config.host_ipc_settings.clone().unwrap_or_default();
     STATE.with(|state| {
         *state.borrow_mut() = Some(RuntimeState {
             plugin_id: config.plugin_id.clone(),
             manifest: config.manifest.clone(),
             delegated_grants: config.delegated_grants.clone(),
+            max_deferred_messages: max_deferred_messages(&host_ipc_settings),
             transport: Transport::Mock {
                 inbound: inbound.into(),
                 outbound: Vec::new(),
@@ -268,6 +292,10 @@ pub(crate) fn take_outbound() -> Vec<IpcMessage> {
             Transport::StdIo { .. } => panic!("mock transport expected"),
         }
     })
+}
+
+fn max_deferred_messages(settings: &HostIpcSettings) -> usize {
+    settings.max_queue_depth.max(1) as usize
 }
 
 #[cfg(test)]

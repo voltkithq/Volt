@@ -13,7 +13,26 @@ impl PluginManager {
             else {
                 return;
             };
-            if !matches!(
+            if state == PluginState::Spawning {
+                crate::plugin_manager::host_api_helpers::clear_plugin_registrations_locked(
+                    &mut registry,
+                    plugin_id,
+                );
+                let process = registry
+                    .plugins
+                    .get(plugin_id)
+                    .and_then(|record| record.process.clone());
+                let events = self
+                    .transition_plugin_locked(&mut registry, plugin_id, PluginState::Terminated)
+                    .map(|event| vec![event])
+                    .unwrap_or_default();
+                if let Some(record) = registry.plugins.get_mut(plugin_id) {
+                    record.process = None;
+                    record.pending_requests = 0;
+                    record.spawn_cancelled = true;
+                }
+                (process, state, events)
+            } else if !matches!(
                 state,
                 PluginState::Loaded
                     | PluginState::Active
@@ -28,23 +47,23 @@ impl PluginManager {
                     record.process = None;
                 }
                 return;
+            } else {
+                let mut events = Vec::new();
+                if matches!(state, PluginState::Active | PluginState::Running)
+                    && let Ok(event) = self.transition_plugin_locked(
+                        &mut registry,
+                        plugin_id,
+                        PluginState::Deactivating,
+                    )
+                {
+                    events.push(event);
+                }
+                let process = registry
+                    .plugins
+                    .get(plugin_id)
+                    .and_then(|record| record.process.clone());
+                (process, state, events)
             }
-
-            let mut events = Vec::new();
-            if matches!(state, PluginState::Active | PluginState::Running)
-                && let Ok(event) = self.transition_plugin_locked(
-                    &mut registry,
-                    plugin_id,
-                    PluginState::Deactivating,
-                )
-            {
-                events.push(event);
-            }
-            let process = registry
-                .plugins
-                .get(plugin_id)
-                .and_then(|record| record.process.clone());
-            (process, state, events)
         };
         for event in pre_events {
             self.emit_lifecycle_event(event);
@@ -53,7 +72,7 @@ impl PluginManager {
         let Some(process) = process else {
             return;
         };
-        let result = if state == PluginState::Loaded {
+        let result = if matches!(state, PluginState::Loaded | PluginState::Spawning) {
             process.kill()
         } else {
             process.deactivate(self.deactivation_timeout())
@@ -70,6 +89,7 @@ impl PluginManager {
             if let Some(record) = registry.plugins.get_mut(plugin_id) {
                 record.process = None;
                 record.pending_requests = 0;
+                record.spawn_cancelled = false;
             }
             match result {
                 Ok(()) => {

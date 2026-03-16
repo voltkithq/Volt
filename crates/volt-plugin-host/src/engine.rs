@@ -8,6 +8,7 @@ use boa_engine::module::{MapModuleLoader, Module};
 use boa_engine::object::builtins::JsPromise;
 use boa_engine::{JsValue, Source, js_string};
 use tokio::runtime::Builder as TokioRuntimeBuilder;
+use tokio::task::yield_now;
 
 use crate::config::PluginConfig;
 use crate::ipc::{IpcMessage, MessageType};
@@ -235,7 +236,10 @@ impl PluginEngine {
                 .map_err(|error| error.to_string())?;
 
                 match promise.state() {
-                    PromiseState::Pending => continue,
+                    PromiseState::Pending => {
+                        yield_now().await;
+                        continue;
+                    }
                     PromiseState::Fulfilled(value) => return Ok(value),
                     PromiseState::Rejected(error) => return Err(error.display().to_string()),
                 }

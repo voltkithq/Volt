@@ -186,7 +186,11 @@ fn write_bytes_atomic(root: &Path, relative_path: &str, data: &[u8]) -> Result<(
     let final_resolved = volt_core::fs::safe_resolve_for_create(root, relative_path)
         .map_err(|error| error.to_string())?;
     std::fs::write(&temp_resolved, data).map_err(|error| error.to_string())?;
-    replace_path_atomic(&temp_resolved, &final_resolved)
+    if let Err(error) = replace_path_atomic(&temp_resolved, &final_resolved) {
+        let _ = std::fs::remove_file(&temp_resolved);
+        return Err(error);
+    }
+    Ok(())
 }
 
 fn hash_key(key: &str) -> String {

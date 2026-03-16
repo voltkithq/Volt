@@ -178,6 +178,7 @@ fn is_valid_transition(current: PluginState, next: PluginState) -> bool {
             | (PluginState::Terminated, PluginState::Spawning)
             | (PluginState::Failed, PluginState::Spawning)
             | (PluginState::Disabled, PluginState::Validated)
+            | (PluginState::Spawning, PluginState::Terminated)
             | (PluginState::Spawning, PluginState::Loaded)
             | (PluginState::Loaded, PluginState::Terminated)
             | (PluginState::Loaded, PluginState::Active)
