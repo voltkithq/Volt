@@ -84,6 +84,11 @@ pub fn safe_resolve(base: &Path, user_path: &str) -> Result<PathBuf, FsError> {
 
 /// Resolve a path for create/write flows while securely materializing any
 /// missing parent directories inside the scoped base directory.
+///
+/// Built-in CRUD operations execute directly through a scoped directory handle
+/// and do not need this path-returning helper. This remains part of the API
+/// for callers such as `volt_db` that must hand a validated path to another
+/// subsystem after the parent chain has been created safely.
 pub fn safe_resolve_for_create(base: &Path, user_path: &str) -> Result<PathBuf, FsError> {
     let resolved = safe_resolve(base, user_path)?;
     ensure_scoped_parent_dirs(base, &resolved)?;
@@ -261,6 +266,11 @@ pub fn rename(base: &Path, from: &str, to: &str) -> Result<(), FsError> {
 
 /// Rename (move) a file or directory within the scope, replacing the
 /// destination if it already exists.
+///
+/// This is currently used by internal storage writes. Callers should rely on
+/// the scoped-handle confinement guarantees here, but not assume stronger
+/// cross-platform atomic replacement semantics than the underlying OS rename
+/// operation provides.
 pub fn replace_file(base: &Path, from: &str, to: &str) -> Result<(), FsError> {
     validate_path(from).map_err(FsError::Security)?;
     validate_path(to).map_err(FsError::Security)?;
@@ -334,6 +344,8 @@ fn scoped_path(path: &str) -> &Path {
     }
 }
 
+/// Materialize a directory chain below `base` one component at a time and
+/// reject symlink substitutions while walking it.
 fn ensure_scoped_directory(base: &Path, directory: &Path) -> Result<(), FsError> {
     let canonical_base = canonical_base_dir(base)?;
     let relative = directory
@@ -374,6 +386,8 @@ fn ensure_scoped_directory(base: &Path, directory: &Path) -> Result<(), FsError>
     Ok(())
 }
 
+/// Ensure the parent directory for a to-be-created path exists within the
+/// scoped base directory before returning that path to external callers.
 fn ensure_scoped_parent_dirs(base: &Path, resolved: &Path) -> Result<(), FsError> {
     let Some(parent) = resolved.parent() else {
         return Err(FsError::Security(
