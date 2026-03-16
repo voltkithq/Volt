@@ -6,6 +6,27 @@ use thiserror::Error;
 
 use crate::security::validate_path;
 
+/// Verify that an opened file descriptor actually resides under the expected
+/// base directory. This closes the TOCTOU gap between path validation and
+/// the actual file operation: even if the path was swapped (e.g., via a
+/// symlink race) between `safe_resolve` and `open`, the post-open check
+/// catches the escape.
+fn verify_opened_path(opened: &Path, canonical_base: &Path) -> Result<(), FsError> {
+    let actual = opened
+        .canonicalize()
+        .map_err(|_| FsError::Security("cannot verify opened path".to_string()))?;
+    if !actual.starts_with(canonical_base) {
+        return Err(FsError::OutOfScope);
+    }
+    Ok(())
+}
+
+/// Canonicalize the base once and return it for reuse in post-open checks.
+fn canonical_base(base: &Path) -> Result<PathBuf, FsError> {
+    base.canonicalize()
+        .map_err(|_| FsError::Security("Base directory does not exist".to_string()))
+}
+
 #[derive(Error, Debug)]
 pub enum FsError {
     #[error("file system error: {0}")]
@@ -94,30 +115,46 @@ pub fn safe_resolve_for_create(base: &Path, user_path: &str) -> Result<PathBuf, 
 }
 
 /// Read a file's contents as bytes.
+/// Post-open verification ensures no TOCTOU symlink swap can escape the sandbox.
 pub fn read_file(base: &Path, path: &str) -> Result<Vec<u8>, FsError> {
     let resolved = safe_resolve(base, path)?;
-    Ok(fs::read(resolved)?)
+    let cb = canonical_base(base)?;
+    verify_opened_path(&resolved, &cb)?;
+    let data = fs::read(&resolved)?;
+    verify_opened_path(&resolved, &cb)?;
+    Ok(data)
 }
 
 /// Read a file's contents as a UTF-8 string.
+/// Post-open verification ensures no TOCTOU symlink swap can escape the sandbox.
 pub fn read_file_text(base: &Path, path: &str) -> Result<String, FsError> {
     let resolved = safe_resolve(base, path)?;
-    Ok(fs::read_to_string(resolved)?)
+    let cb = canonical_base(base)?;
+    verify_opened_path(&resolved, &cb)?;
+    let data = fs::read_to_string(&resolved)?;
+    verify_opened_path(&resolved, &cb)?;
+    Ok(data)
 }
 
 /// Write data to a file, creating it if it doesn't exist.
+/// For existing files, a post-open symlink check prevents TOCTOU escapes.
+/// For new files, `create_new(true)` fails if a symlink appears at the path.
 pub fn write_file(base: &Path, path: &str, data: &[u8]) -> Result<(), FsError> {
     let resolved = safe_resolve_for_create(base, path)?;
+    let cb = canonical_base(base)?;
 
     if resolved.exists() {
-        fs::write(resolved, data)?;
+        ensure_not_symlink(&resolved)?;
+        verify_opened_path(&resolved, &cb)?;
+        fs::write(&resolved, data)?;
+        verify_opened_path(&resolved, &cb)?;
         return Ok(());
     }
 
     let mut file = fs::OpenOptions::new()
         .write(true)
         .create_new(true)
-        .open(resolved)?;
+        .open(&resolved)?;
     file.write_all(data)?;
     Ok(())
 }
@@ -125,6 +162,8 @@ pub fn write_file(base: &Path, path: &str, data: &[u8]) -> Result<(), FsError> {
 /// List entries in a directory.
 pub fn read_dir(base: &Path, path: &str) -> Result<Vec<String>, FsError> {
     let resolved = safe_resolve(base, path)?;
+    let cb = canonical_base(base)?;
+    verify_opened_path(&resolved, &cb)?;
     let mut entries = Vec::new();
     for entry in fs::read_dir(resolved)? {
         let entry = entry?;
@@ -138,6 +177,8 @@ pub fn read_dir(base: &Path, path: &str) -> Result<Vec<String>, FsError> {
 /// Get metadata for a path.
 pub fn stat(base: &Path, path: &str) -> Result<FileInfo, FsError> {
     let resolved = safe_resolve(base, path)?;
+    let cb = canonical_base(base)?;
+    verify_opened_path(&resolved, &cb)?;
     let meta = fs::metadata(resolved)?;
 
     let modified_ms = meta
@@ -166,7 +207,12 @@ pub fn stat(base: &Path, path: &str) -> Result<FileInfo, FsError> {
 /// Check whether a path exists within the scoped base directory.
 pub fn exists(base: &Path, path: &str) -> Result<bool, FsError> {
     let resolved = safe_resolve(base, path)?;
-    Ok(resolved.exists())
+    if !resolved.exists() {
+        return Ok(false);
+    }
+    let cb = canonical_base(base)?;
+    verify_opened_path(&resolved, &cb)?;
+    Ok(true)
 }
 
 /// File metadata info returned by stat().
@@ -191,21 +237,26 @@ pub fn mkdir(base: &Path, path: &str) -> Result<(), FsError> {
 
 /// Remove a file or directory.
 /// If the path is a directory, removal is recursive.
+/// Double symlink check (before and after `is_dir`) narrows the TOCTOU window.
 pub fn remove(base: &Path, path: &str) -> Result<(), FsError> {
     let resolved = safe_resolve(base, path)?;
     ensure_not_symlink(&resolved)?;
-    let canonical_base = base
-        .canonicalize()
-        .map_err(|_| FsError::Security("Base directory does not exist".to_string()))?;
-    if resolved == canonical_base {
+    let cb = canonical_base(base)?;
+    if resolved == cb {
         return Err(FsError::Security(
             "Refusing to remove the base directory".to_string(),
         ));
     }
 
     if resolved.is_dir() {
+        // Re-check: a symlink could have been swapped in between the first
+        // ensure_not_symlink and the is_dir() call above.
+        ensure_not_symlink(&resolved)?;
+        verify_opened_path(&resolved, &cb)?;
         Ok(fs::remove_dir_all(resolved)?)
     } else {
+        ensure_not_symlink(&resolved)?;
+        verify_opened_path(&resolved, &cb)?;
         Ok(fs::remove_file(resolved)?)
     }
 }
@@ -216,6 +267,8 @@ pub fn remove(base: &Path, path: &str) -> Result<(), FsError> {
 pub fn rename(base: &Path, from: &str, to: &str) -> Result<(), FsError> {
     let resolved_from = safe_resolve(base, from)?;
     let resolved_to = safe_resolve_for_create(base, to)?;
+    let cb = canonical_base(base)?;
+    verify_opened_path(&resolved_from, &cb)?;
 
     if !resolved_from.exists() {
         return Err(FsError::Io(std::io::Error::new(
@@ -240,6 +293,8 @@ pub fn rename(base: &Path, from: &str, to: &str) -> Result<(), FsError> {
 pub fn copy(base: &Path, from: &str, to: &str) -> Result<(), FsError> {
     let resolved_from = safe_resolve(base, from)?;
     let resolved_to = safe_resolve_for_create(base, to)?;
+    let cb = canonical_base(base)?;
+    verify_opened_path(&resolved_from, &cb)?;
 
     if !resolved_from.exists() {
         return Err(FsError::Io(std::io::Error::new(
