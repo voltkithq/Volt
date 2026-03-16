@@ -68,14 +68,24 @@ pub(super) fn dispatch_ipc_task(
     request_id: &str,
     timeout: Duration,
 ) -> IpcResponse {
+    // Check rate limit BEFORE executing any work (including native fast paths)
+    // so that rate-limited requests are rejected without performing computation.
+    if let Err(error) = runtime_client.check_ipc_rate_limit() {
+        return IpcResponse::error_with_code(
+            request_id.to_string(),
+            error,
+            IPC_HANDLER_ERROR_CODE.to_string(),
+        );
+    }
+
     if let Some(response) = try_dispatch_native_fast_path(raw) {
-        return rate_limit_response(runtime_client, request_id, response);
+        return response;
     }
 
     if let Some(plugin_manager) = plugin_manager
         && let Some(response) = try_dispatch_plugin_route(plugin_manager, raw, timeout)
     {
-        return rate_limit_response(runtime_client, request_id, response);
+        return response;
     }
 
     runtime_client
@@ -119,17 +129,3 @@ fn try_dispatch_plugin_route(
     plugin_manager.handle_ipc_request(&request, timeout)
 }
 
-fn rate_limit_response(
-    runtime_client: &JsRuntimePoolClient,
-    request_id: &str,
-    response: IpcResponse,
-) -> IpcResponse {
-    match runtime_client.check_ipc_rate_limit() {
-        Ok(()) => response,
-        Err(error) => IpcResponse::error_with_code(
-            request_id.to_string(),
-            error,
-            IPC_HANDLER_ERROR_CODE.to_string(),
-        ),
-    }
-}

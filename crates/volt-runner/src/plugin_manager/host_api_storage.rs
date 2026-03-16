@@ -170,7 +170,16 @@ fn estimate_total_bytes(root: &Path, index: &StorageIndex) -> usize {
 
 fn load_index(root: &Path) -> Result<StorageIndex, String> {
     match volt_core::fs::read_file_text(root, STORAGE_INDEX_FILE) {
-        Ok(contents) => serde_json::from_str(&contents).map_err(|error| error.to_string()),
+        Ok(contents) => match serde_json::from_str(&contents) {
+            Ok(index) => Ok(index),
+            Err(error) => {
+                tracing::warn!(
+                    "storage index is corrupted ({}), starting with empty index",
+                    error
+                );
+                Ok(StorageIndex::default())
+            }
+        },
         Err(volt_core::fs::FsError::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {
             Ok(StorageIndex::default())
         }
@@ -201,8 +210,14 @@ fn reconcile_index(root: &Path, index: &mut StorageIndex) -> Result<(), String> 
         let Some(name) = entry.file_name().to_str().map(str::to_string) else {
             continue;
         };
+        // Clean up orphaned .val files not referenced by the index
         if name.ends_with(".val") && !expected.contains(&name) {
             volt_core::fs::remove(root, &name).map_err(|error| error.to_string())?;
+            changed = true;
+        }
+        // Clean up leftover .tmp files from interrupted atomic writes
+        if name.ends_with(".tmp") {
+            let _ = volt_core::fs::remove(root, &name);
             changed = true;
         }
     }

@@ -6,7 +6,7 @@
 type IpcHandler = (args: unknown) => Promise<unknown> | unknown;
 
 const handlers = new Map<string, IpcHandler>();
-const RESERVED_IPC_PREFIX = 'volt:';
+const RESERVED_IPC_PREFIXES = ['volt:', '__volt_internal:'] as const;
 
 export type IpcErrorCode =
   | 'IPC_HANDLER_NOT_FOUND'
@@ -217,8 +217,11 @@ function assertNonReservedChannel(channel: string): void {
   if (typeof channel !== 'string') {
     throw new Error('IPC handler channel must be a string');
   }
-  if (channel.trim().startsWith(RESERVED_IPC_PREFIX)) {
-    throw new Error(`IPC channel is reserved by Volt: ${channel.trim()}`);
+  const trimmed = channel.trim();
+  for (const prefix of RESERVED_IPC_PREFIXES) {
+    if (trimmed.startsWith(prefix)) {
+      throw new Error(`IPC channel is reserved by Volt: ${trimmed}`);
+    }
   }
 }
 
