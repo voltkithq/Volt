@@ -4,8 +4,8 @@ use super::*;
 fn test_ipc_init_script_valid() {
     let script = ipc_init_script();
     assert!(script.contains("window.__volt__"));
-    assert!(script.contains("window.__volt_response__"));
-    assert!(script.contains("window.__volt_event__"));
+    assert!(script.contains("'__volt_response__'"));
+    assert!(script.contains("'__volt_event__'"));
     assert!(script.contains("response.errorCode"));
     assert!(script.contains("response.errorDetails"));
 }
