@@ -1,5 +1,6 @@
 use super::*;
 use std::env;
+use std::fs;
 
 #[test]
 fn test_path_traversal_rejected() {
