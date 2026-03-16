@@ -6,7 +6,7 @@
 type IpcHandler = (args: unknown) => Promise<unknown> | unknown;
 
 const handlers = new Map<string, IpcHandler>();
-const RESERVED_IPC_PREFIXES = ['volt:', '__volt_internal:'];
+const RESERVED_IPC_PREFIXES = ['volt:', '__volt_internal:', 'plugin:'];
 
 export type IpcErrorCode =
   | 'IPC_HANDLER_NOT_FOUND'

@@ -27,7 +27,11 @@ const IPC_MODULE_BOOTSTRAP: &str = r#"
     };
 
     const ensureUserChannel = (method) => {
-        if (method.startsWith('volt:')) {
+        if (
+            method.startsWith('volt:')
+            || method.startsWith('__volt_internal:')
+            || method.startsWith('plugin:')
+        ) {
             throw new Error(`IPC channel is reserved by Volt: ${method}`);
         }
         return method;
