@@ -152,6 +152,8 @@ struct AccessRequestOptions {
     multiple: bool,
 }
 
+const MAX_DIALOG_TITLE_LEN: usize = 100;
+
 impl AccessRequestOptions {
     fn parse(payload: &Value) -> Result<Self, PluginRuntimeError> {
         let object = payload.as_object().ok_or_else(|| PluginRuntimeError {
@@ -164,7 +166,7 @@ impl AccessRequestOptions {
                 .and_then(Value::as_str)
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
-                .map(str::to_string),
+                .map(|value| sanitize_dialog_title(value)),
             directory: object
                 .get("directory")
                 .and_then(Value::as_bool)
@@ -183,6 +185,17 @@ fn format_dialog_title(plugin_name: &str, options: &AccessRequestOptions) -> Str
         Some(title) => format!("Plugin '{plugin_name}' wants to access a {resource}: {title}"),
         None => format!("Plugin '{plugin_name}' wants to access a {resource}"),
     }
+}
+
+/// Strip Unicode control characters (Cc and Cf categories including RTL
+/// overrides) and truncate to prevent dialog spoofing by malicious plugins.
+fn sanitize_dialog_title(raw: &str) -> String {
+    let clean: String = raw
+        .chars()
+        .filter(|ch| !ch.is_control() && !matches!(ch, '\u{200E}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}' | '\u{FEFF}'))
+        .take(MAX_DIALOG_TITLE_LEN)
+        .collect();
+    clean
 }
 
 fn access_error(message: String) -> PluginRuntimeError {

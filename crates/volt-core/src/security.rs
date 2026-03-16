@@ -48,7 +48,11 @@ fn sanitize_dev_server_origin(dev_server_origin: &str) -> Option<(String, String
         return None;
     }
     let host = parsed.host_str()?;
-    if host.contains(';') || host.contains('\n') || host.contains('\r') {
+    if host.contains(';')
+        || host.contains('\n')
+        || host.contains('\r')
+        || host.chars().any(|c| c.is_ascii_whitespace())
+    {
         return None;
     }
     let mut http_origin = format!("{scheme}://{host}");
@@ -63,6 +67,11 @@ fn sanitize_dev_server_origin(dev_server_origin: &str) -> Option<(String, String
 
 /// Validate that a path string does not attempt directory traversal.
 pub fn validate_path(path: &str) -> Result<(), String> {
+    // Reject null bytes (defense-in-depth — Rust's stdlib also rejects them)
+    if path.contains('\0') {
+        return Err("Null bytes are not allowed in paths".to_string());
+    }
+
     // Reject absolute paths
     if path.starts_with('/') || path.starts_with('\\') {
         return Err("Absolute paths are not allowed".to_string());
@@ -73,29 +82,21 @@ pub fn validate_path(path: &str) -> Result<(), String> {
         return Err("Absolute paths are not allowed".to_string());
     }
 
-    // Reject path traversal
-    for component in path.split(['/', '\\']) {
-        if component == ".." {
-            return Err("Path traversal (..) is not allowed".to_string());
-        }
-    }
-
-    // Reject Windows reserved device names
-    let base_name = path
-        .split(['/', '\\'])
-        .next_back()
-        .unwrap_or(path)
-        .split('.')
-        .next()
-        .unwrap_or("");
-
     let reserved = [
         "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
         "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
     ];
 
-    if reserved.iter().any(|r| r.eq_ignore_ascii_case(base_name)) {
-        return Err(format!("Reserved device name '{base_name}' is not allowed"));
+    // Check ALL path components (not just the last) for traversal and reserved names
+    for component in path.split(['/', '\\']) {
+        if component == ".." {
+            return Err("Path traversal (..) is not allowed".to_string());
+        }
+
+        let base_name = component.split('.').next().unwrap_or("");
+        if reserved.iter().any(|r| r.eq_ignore_ascii_case(base_name)) {
+            return Err(format!("Reserved device name '{base_name}' is not allowed"));
+        }
     }
 
     Ok(())

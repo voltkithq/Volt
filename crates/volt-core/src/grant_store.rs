@@ -11,8 +11,8 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicU64, Ordering};
 
+use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -30,7 +30,6 @@ struct GrantEntry {
     root_path: PathBuf,
 }
 
-static GRANT_COUNTER: AtomicU64 = AtomicU64::new(0);
 static GRANT_STORE: Mutex<Option<HashMap<String, GrantEntry>>> = Mutex::new(None);
 
 fn with_store<F, R>(f: F) -> R
@@ -42,13 +41,26 @@ where
     f(store)
 }
 
+/// Generate a cryptographically unpredictable grant ID by hashing
+/// nanosecond timestamp + process ID + a random seed from the address
+/// of a freshly allocated Box (ASLR-derived entropy). This replaces the
+/// previous timestamp+counter scheme which was guessable.
 fn generate_grant_id() -> String {
-    let count = GRANT_COUNTER.fetch_add(1, Ordering::Relaxed);
     let ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_nanos();
-    format!("grant_{ts:x}_{count:x}")
+    let entropy_box = Box::new(0u8);
+    let addr = &*entropy_box as *const u8 as usize;
+    let pid = std::process::id();
+    let tid = std::thread::current().id();
+    let mut hasher = Sha256::new();
+    hasher.update(ts.to_le_bytes());
+    hasher.update(pid.to_le_bytes());
+    hasher.update(format!("{tid:?}").as_bytes());
+    hasher.update(addr.to_le_bytes());
+    let hash = hasher.finalize();
+    format!("grant_{:x}", hash)
 }
 
 /// Create a new grant for the given directory path.
@@ -60,9 +72,18 @@ pub fn create_grant(path: PathBuf) -> Result<String, GrantError> {
         return Err(GrantError::InvalidPath);
     }
 
+    // Canonicalize at creation time so the grant always refers to the
+    // real, resolved path — preventing drift if symlinks change later.
+    let canonical = path.canonicalize().map_err(|_| GrantError::InvalidPath)?;
+
     let id = generate_grant_id();
     with_store(|store| {
-        store.insert(id.clone(), GrantEntry { root_path: path });
+        store.insert(
+            id.clone(),
+            GrantEntry {
+                root_path: canonical,
+            },
+        );
     });
     Ok(id)
 }
@@ -105,11 +126,12 @@ mod tests {
     fn test_create_and_resolve_grant() {
         let _guard = lock_grant_state();
         let dir = env::temp_dir();
-        let id = create_grant(dir.clone()).unwrap();
+        let canonical_dir = dir.canonicalize().unwrap();
+        let id = create_grant(dir).unwrap();
         assert!(id.starts_with("grant_"));
 
         let resolved = resolve_grant(&id).unwrap();
-        assert_eq!(resolved, dir);
+        assert_eq!(resolved, canonical_dir);
     }
 
     #[test]

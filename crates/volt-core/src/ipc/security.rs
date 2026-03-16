@@ -26,6 +26,7 @@ pub enum IpcError {
 }
 
 pub const IPC_MAX_REQUEST_BYTES: usize = 256 * 1024;
+pub const IPC_MAX_RESPONSE_BYTES: usize = 16 * 1024 * 1024;
 const MAX_PROTOTYPE_CHECK_DEPTH: usize = 64;
 
 /// Parse raw JSON and reject payloads containing prototype-pollution keys.

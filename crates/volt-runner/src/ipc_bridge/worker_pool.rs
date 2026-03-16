@@ -45,16 +45,29 @@ impl IpcWorkerPool {
                         Err(_) => return,
                     };
 
-                    let response = dispatch_ipc_task(
-                        &worker_runtime_client,
-                        worker_plugin_manager.as_ref(),
-                        &task.raw,
-                        &task.request_id,
-                        task.timeout,
-                    );
+                    let js_window_id = task.js_window_id.clone();
 
-                    send_response_to_window(&task.js_window_id, response);
-                    worker_tracker.release(&task.js_window_id);
+                    // Catch panics to guarantee the in-flight slot is always
+                    // released, preventing permanent slot exhaustion.
+                    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        let response = dispatch_ipc_task(
+                            &worker_runtime_client,
+                            worker_plugin_manager.as_ref(),
+                            &task.raw,
+                            &task.request_id,
+                            task.timeout,
+                        );
+                        send_response_to_window(&task.js_window_id, response);
+                    }));
+
+                    if result.is_err() {
+                        tracing::error!(
+                            window = %js_window_id,
+                            "IPC dispatch panicked — slot released, no response sent"
+                        );
+                    }
+
+                    worker_tracker.release(&js_window_id);
                 }
             });
 

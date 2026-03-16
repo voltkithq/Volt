@@ -74,8 +74,9 @@ pub fn ipc_init_script() -> String {
         }
     });
 
-    // Response handler called from Rust via evaluate_script
-    window.__volt_response__ = function(responseJson) {
+    // Response handler called from Rust via evaluate_script.
+    // Defined as non-writable to prevent interception by injected scripts.
+    Object.defineProperty(window, '__volt_response__', { value: function(responseJson) {
         try {
             var response = JSON.parse(responseJson);
             var p = pending.get(response.id);
@@ -97,10 +98,11 @@ pub fn ipc_init_script() -> String {
         } catch (e) {
             console.error('[volt] Failed to parse IPC response:', e);
         }
-    };
+    }, writable: false, configurable: false });
 
-    // Event handler called from Rust via evaluate_script
-    window.__volt_event__ = function(event, data) {
+    // Event handler called from Rust via evaluate_script.
+    // Defined as non-writable to prevent interception by injected scripts.
+    Object.defineProperty(window, '__volt_event__', { value: function(event, data) {
         var set = listeners.get(event);
         if (set) {
             set.forEach(function(cb) {
@@ -111,7 +113,7 @@ pub fn ipc_init_script() -> String {
                 }
             });
         }
-    };
+    }, writable: false, configurable: false });
 
     // Forward CSP violations to native logging so they are visible without DevTools.
     document.addEventListener('securitypolicyviolation', function(e) {
@@ -185,6 +187,7 @@ fn escape_for_single_quoted_js(value: &str) -> String {
             '\'' => escaped.push_str("\\'"),
             '\n' => escaped.push_str("\\n"),
             '\r' => escaped.push_str("\\r"),
+            '\0' => escaped.push_str("\\0"),
             '\u{2028}' => escaped.push_str("\\u2028"),
             '\u{2029}' => escaped.push_str("\\u2029"),
             _ => escaped.push(ch),

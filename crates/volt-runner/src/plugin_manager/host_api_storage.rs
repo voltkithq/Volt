@@ -12,6 +12,7 @@ const STORAGE_DIR: &str = "storage";
 const STORAGE_INDEX_FILE: &str = "_index.json";
 const STORAGE_MAX_KEY_BYTES: usize = 256;
 const STORAGE_MAX_VALUE_BYTES: usize = 1024 * 1024;
+const STORAGE_MAX_TOTAL_BYTES: usize = 50 * 1024 * 1024;
 
 impl PluginManager {
     pub(super) fn handle_storage_request(
@@ -69,6 +70,7 @@ impl PluginManager {
 struct PluginStorage {
     root: PathBuf,
     index: StorageIndex,
+    total_bytes: usize,
 }
 
 impl PluginStorage {
@@ -77,9 +79,11 @@ impl PluginStorage {
         if reconcile {
             reconcile_index(root, &mut index)?;
         }
+        let total_bytes = estimate_total_bytes(root, &index);
         Ok(Self {
             root: root.to_path_buf(),
             index,
+            total_bytes,
         })
     }
 
@@ -100,10 +104,28 @@ impl PluginStorage {
     }
 
     fn set(&mut self, key: String, value: String) -> Result<(), PluginRuntimeError> {
+        let new_size = value.len();
+        // Subtract old value size if key already exists.
+        let old_size = self
+            .index
+            .entries
+            .get(&key)
+            .and_then(|hash| {
+                let path = value_path(hash);
+                volt_core::fs::stat(&self.root, &path).ok().map(|info| info.size as usize)
+            })
+            .unwrap_or(0);
+        let projected = self.total_bytes + new_size - old_size;
+        if projected > STORAGE_MAX_TOTAL_BYTES {
+            return Err(storage_error(format!(
+                "plugin storage quota exceeded ({projected} > {STORAGE_MAX_TOTAL_BYTES} bytes)"
+            )));
+        }
         let hash = hash_key(&key);
         write_bytes_atomic(&self.root, &value_path(&hash), value.as_bytes())
             .map_err(storage_error)?;
         self.index.entries.insert(key, hash);
+        self.total_bytes = projected;
         save_index(&self.root, &self.index).map_err(storage_error)
     }
 
@@ -133,6 +155,17 @@ impl PluginStorage {
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct StorageIndex {
     entries: BTreeMap<String, String>,
+}
+
+fn estimate_total_bytes(root: &Path, index: &StorageIndex) -> usize {
+    index
+        .entries
+        .values()
+        .filter_map(|hash| {
+            let path = value_path(hash);
+            volt_core::fs::stat(root, &path).ok().map(|info| info.size as usize)
+        })
+        .sum()
 }
 
 fn load_index(root: &Path) -> Result<StorageIndex, String> {

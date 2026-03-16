@@ -10,6 +10,7 @@ use super::wire::{WireMessage, WireMessageType};
 use crate::plugin_manager::{ExitListener, MessageListener, ProcessExitInfo};
 
 const MAX_FRAME_SIZE: usize = 16 * 1024 * 1024;
+const MAX_STDERR_CAPTURE_BYTES: usize = 256 * 1024;
 
 pub(super) struct ChildPluginProcessInner {
     pub(super) child: Mutex<Child>,
@@ -157,10 +158,26 @@ pub(super) fn spawn_stderr_reader(
     let _ = thread::Builder::new()
         .name("volt-plugin-host-stderr".to_string())
         .spawn(move || {
-            let mut captured = String::new();
-            let _ = stderr.read_to_string(&mut captured);
+            // Read in bounded chunks to prevent a malicious plugin from
+            // causing unbounded memory growth in the host process.
+            let mut captured = Vec::new();
+            let mut buf = [0u8; 4096];
+            loop {
+                match stderr.read(&mut buf) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        let remaining = MAX_STDERR_CAPTURE_BYTES.saturating_sub(captured.len());
+                        if remaining > 0 {
+                            captured.extend_from_slice(&buf[..n.min(remaining)]);
+                        }
+                        // Continue reading (and discarding) to drain the pipe
+                        // and prevent the plugin process from blocking.
+                    }
+                    Err(_) => break,
+                }
+            }
             if let Ok(mut buffer) = stderr_buffer.lock() {
-                *buffer = captured;
+                *buffer = String::from_utf8_lossy(&captured).into_owned();
             }
         });
 }
