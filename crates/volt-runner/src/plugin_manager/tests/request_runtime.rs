@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::AtomicBool;
 use std::thread;
 use std::time::Duration;
 
@@ -9,7 +9,9 @@ use volt_core::ipc::IpcRequest;
 
 use super::super::*;
 use super::fs_support::{TempDir, write_manifest};
-use super::process_support::{FakeOutcome, FakePlan, FakeProcessFactory, FakeRequestOutcome};
+use super::process_support::{
+    FakeOutcome, FakePlan, FakeProcessFactory, FakeRequestOutcome, wait_for_flag,
+};
 use super::shared::{manager_with_factory, register_ipc_handler};
 use crate::runner::config::{RunnerPluginConfig, RunnerPluginLimits};
 
@@ -162,7 +164,7 @@ fn watchdog_kills_after_two_missed_heartbeats() {
     );
     thread::sleep(Duration::from_millis(60));
 
-    assert!(killed.load(Ordering::Relaxed));
+    assert!(wait_for_flag(killed.as_ref(), Duration::from_millis(200)));
     assert_eq!(
         manager
             .get_plugin_state("acme.search")

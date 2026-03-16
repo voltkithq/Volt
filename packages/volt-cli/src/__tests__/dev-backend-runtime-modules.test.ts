@@ -285,4 +285,51 @@ describe('dev backend runtime modules', () => {
       },
     });
   });
+
+  it('enforces the secureStorage value size limit in dev mode', async () => {
+    const project = createTempProject({
+      'backend.ts': `
+        import { ipcMain } from 'volt:ipc';
+        import * as secureStorage from 'volt:secureStorage';
+
+        ipcMain.handle('dev-backend:secure-storage-limit', async () => {
+          return secureStorage
+            .set('token', 'x'.repeat(8193))
+            .then(() => 'unexpected')
+            .catch((error) => String(error));
+        });
+      `,
+      'tsconfig.json': JSON.stringify({
+        compilerOptions: {
+          target: 'ES2022',
+          module: 'ESNext',
+          moduleResolution: 'bundler',
+          strict: true,
+        },
+      }),
+    });
+    cleanups.push(project.cleanup);
+
+    configureRuntimeModuleState({
+      projectRoot: project.rootDir,
+      defaultWindowId: 'window-dev',
+      nativeRuntime: { windowEvalScript: vi.fn() },
+      permissions: ['secureStorage'],
+    });
+
+    const backendLoadState = await loadBackendEntrypointForDev(project.rootDir, './backend.ts');
+    cleanups.push(backendLoadState.dispose);
+
+    const response = await ipcMain.processRequest(
+      'req-secure-storage-limit',
+      'dev-backend:secure-storage-limit',
+      null,
+      { timeoutMs: 200 },
+    );
+    expect(response).toEqual({
+      id: 'req-secure-storage-limit',
+      result:
+        'Error: [volt:secureStorage] Secure storage value length must be <= 8192 bytes.',
+    });
+  });
 });

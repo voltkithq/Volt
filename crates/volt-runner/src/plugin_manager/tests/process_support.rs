@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
@@ -305,4 +305,15 @@ impl PluginProcessHandle for FakeProcessHandle {
     fn stderr_snapshot(&self) -> Option<String> {
         None
     }
+}
+
+pub(super) fn wait_for_flag(flag: &AtomicBool, timeout: Duration) -> bool {
+    let deadline = Instant::now() + timeout;
+    while Instant::now() < deadline {
+        if flag.load(Ordering::Relaxed) {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    flag.load(Ordering::Relaxed)
 }

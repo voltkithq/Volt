@@ -8,7 +8,9 @@ use volt_core::ipc::IpcRequest;
 
 use super::super::*;
 use super::fs_support::{TempDir, write_manifest};
-use super::process_support::{FakeOutcome, FakePlan, FakeProcessFactory, FakeRequestOutcome};
+use super::process_support::{
+    FakeOutcome, FakePlan, FakeProcessFactory, FakeRequestOutcome, wait_for_flag,
+};
 use super::shared::{manager_with_factory, register_ipc_handler};
 use crate::runner::config::{RunnerPluginConfig, RunnerPluginSpawning};
 
@@ -297,7 +299,7 @@ fn deactivation_during_spawning_cancels_startup_and_terminates_plugin() {
     let response = request.join().expect("request thread").expect("response");
     assert!(response.result.is_none());
     assert!(response.error.is_some());
-    assert!(killed.load(Ordering::Relaxed));
+    assert!(wait_for_flag(killed.as_ref(), Duration::from_millis(200)));
 
     let snapshot = manager.get_plugin_state("acme.search").expect("plugin");
     assert_eq!(snapshot.current_state, PluginState::Terminated);

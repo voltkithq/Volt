@@ -3,6 +3,7 @@ import { devModuleError, ensureDevPermission, resolveProjectScopedPath } from '.
 
 const storage = new Map<string, string>();
 let loaded = false;
+const MAX_VALUE_LENGTH = 8192;
 
 function storageFilePath(): string {
   return resolveProjectScopedPath('storage.json', 'secure-storage');
@@ -48,10 +49,20 @@ function normalizeKey(key: string): string {
   return normalized;
 }
 
+function normalizeValue(value: string): string {
+  if (Buffer.byteLength(value, 'utf8') > MAX_VALUE_LENGTH) {
+    throw devModuleError(
+      'secureStorage',
+      `Secure storage value length must be <= ${MAX_VALUE_LENGTH} bytes.`,
+    );
+  }
+  return value;
+}
+
 export async function set(key: string, value: string): Promise<void> {
   ensureDevPermission('secureStorage', 'secureStorage.set()');
   loadStorage();
-  storage.set(normalizeKey(key), value);
+  storage.set(normalizeKey(key), normalizeValue(value));
   persistStorage();
 }
 
