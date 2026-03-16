@@ -1,3 +1,5 @@
+use cap_std::ambient_authority;
+use cap_std::fs::{Dir, OpenOptions as CapOpenOptions};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -24,16 +26,16 @@ pub fn safe_resolve(base: &Path, user_path: &str) -> Result<PathBuf, FsError> {
     // Validate the path for traversal attacks and reserved names
     validate_path(user_path).map_err(FsError::Security)?;
 
-    let resolved = base.join(user_path);
-
-    // Canonicalize both paths and verify the resolved path is under base.
-    // If the file doesn't exist yet, canonicalize the parent.
     let canonical_base = base
         .canonicalize()
         .map_err(|_| FsError::Security("Base directory does not exist".to_string()))?;
+    let resolved = canonical_base.join(user_path);
 
-    // Try to canonicalize the full path first (works if file exists)
-    let canonical_resolved = if resolved.exists() {
+    // Canonicalize both paths and verify the resolved path is under base.
+    // If the file doesn't exist yet, canonicalize the parent.
+    let canonical_resolved = if user_path.is_empty() || user_path == "." {
+        canonical_base.clone()
+    } else if resolved.exists() {
         resolved.canonicalize()?
     } else {
         // If the file doesn't exist, canonicalize the parent directory
@@ -68,6 +70,7 @@ pub fn safe_resolve(base: &Path, user_path: &str) -> Result<PathBuf, FsError> {
             }
             canonical
         } else {
+            ensure_not_symlink(parent)?;
             let canonical_parent = parent.canonicalize()?;
             let file_name = resolved
                 .file_name()
@@ -75,11 +78,6 @@ pub fn safe_resolve(base: &Path, user_path: &str) -> Result<PathBuf, FsError> {
             canonical_parent.join(file_name)
         }
     };
-
-    // Verify the resolved path starts with the base
-    if !canonical_resolved.starts_with(&canonical_base) {
-        return Err(FsError::OutOfScope);
-    }
 
     Ok(canonical_resolved)
 }
@@ -95,38 +93,47 @@ pub fn safe_resolve_for_create(base: &Path, user_path: &str) -> Result<PathBuf, 
 
 /// Read a file's contents as bytes.
 pub fn read_file(base: &Path, path: &str) -> Result<Vec<u8>, FsError> {
-    let resolved = safe_resolve(base, path)?;
-    Ok(fs::read(resolved)?)
+    validate_path(path).map_err(FsError::Security)?;
+    let (_, dir) = open_scoped_dir(base)?;
+    Ok(dir.read(scoped_path(path))?)
 }
 
 /// Read a file's contents as a UTF-8 string.
 pub fn read_file_text(base: &Path, path: &str) -> Result<String, FsError> {
-    let resolved = safe_resolve(base, path)?;
-    Ok(fs::read_to_string(resolved)?)
+    validate_path(path).map_err(FsError::Security)?;
+    let (_, dir) = open_scoped_dir(base)?;
+    Ok(dir.read_to_string(scoped_path(path))?)
 }
 
 /// Write data to a file, creating it if it doesn't exist.
 pub fn write_file(base: &Path, path: &str, data: &[u8]) -> Result<(), FsError> {
-    let resolved = safe_resolve_for_create(base, path)?;
-
-    if resolved.exists() {
-        fs::write(resolved, data)?;
-        return Ok(());
+    validate_path(path).map_err(FsError::Security)?;
+    let (_, dir) = open_scoped_dir(base)?;
+    if let Some(parent) = Path::new(path).parent()
+        && !parent.as_os_str().is_empty()
+        && parent != Path::new(".")
+    {
+        dir.create_dir_all(parent)?;
     }
 
-    let mut file = fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(resolved)?;
+    let mut options = CapOpenOptions::new();
+    let options = options.write(true).create(true).truncate(true);
+    let mut file = dir.open_with(path, options)?;
     file.write_all(data)?;
     Ok(())
 }
 
 /// List entries in a directory.
 pub fn read_dir(base: &Path, path: &str) -> Result<Vec<String>, FsError> {
-    let resolved = safe_resolve(base, path)?;
+    validate_path(path).map_err(FsError::Security)?;
+    let (_, dir) = open_scoped_dir(base)?;
     let mut entries = Vec::new();
-    for entry in fs::read_dir(resolved)? {
+    let read_dir = if path.is_empty() || path == "." {
+        dir.entries()?
+    } else {
+        dir.read_dir(path)?
+    };
+    for entry in read_dir {
         let entry = entry?;
         if let Some(name) = entry.file_name().to_str() {
             entries.push(name.to_string());
@@ -137,12 +144,18 @@ pub fn read_dir(base: &Path, path: &str) -> Result<Vec<String>, FsError> {
 
 /// Get metadata for a path.
 pub fn stat(base: &Path, path: &str) -> Result<FileInfo, FsError> {
-    let resolved = safe_resolve(base, path)?;
-    let meta = fs::metadata(resolved)?;
+    validate_path(path).map_err(FsError::Security)?;
+    let (_, dir) = open_scoped_dir(base)?;
+    let meta = if path.is_empty() || path == "." {
+        dir.dir_metadata()?
+    } else {
+        dir.metadata(path)?
+    };
 
     let modified_ms = meta
         .modified()
         .ok()
+        .map(|time| time.into_std())
         .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
         .map(|d| d.as_secs_f64() * 1000.0)
         .unwrap_or(0.0);
@@ -150,6 +163,7 @@ pub fn stat(base: &Path, path: &str) -> Result<FileInfo, FsError> {
     let created_ms = meta
         .created()
         .ok()
+        .map(|time| time.into_std())
         .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
         .map(|d| d.as_secs_f64() * 1000.0);
 
@@ -165,8 +179,12 @@ pub fn stat(base: &Path, path: &str) -> Result<FileInfo, FsError> {
 
 /// Check whether a path exists within the scoped base directory.
 pub fn exists(base: &Path, path: &str) -> Result<bool, FsError> {
-    let resolved = safe_resolve(base, path)?;
-    Ok(resolved.exists())
+    validate_path(path).map_err(FsError::Security)?;
+    let (_, dir) = open_scoped_dir(base)?;
+    if path.is_empty() || path == "." {
+        return Ok(true);
+    }
+    dir.try_exists(path).map_err(FsError::Io)
 }
 
 /// File metadata info returned by stat().
@@ -185,28 +203,28 @@ pub struct FileInfo {
 
 /// Create a directory (and parents if needed).
 pub fn mkdir(base: &Path, path: &str) -> Result<(), FsError> {
-    let resolved = safe_resolve(base, path)?;
-    ensure_scoped_directory(base, &resolved)
+    validate_path(path).map_err(FsError::Security)?;
+    let (_, dir) = open_scoped_dir(base)?;
+    dir.create_dir_all(scoped_path(path))?;
+    Ok(())
 }
 
 /// Remove a file or directory.
 /// If the path is a directory, removal is recursive.
 pub fn remove(base: &Path, path: &str) -> Result<(), FsError> {
-    let resolved = safe_resolve(base, path)?;
-    ensure_not_symlink(&resolved)?;
-    let canonical_base = base
-        .canonicalize()
-        .map_err(|_| FsError::Security("Base directory does not exist".to_string()))?;
-    if resolved == canonical_base {
+    validate_path(path).map_err(FsError::Security)?;
+    if path.is_empty() || path == "." {
         return Err(FsError::Security(
             "Refusing to remove the base directory".to_string(),
         ));
     }
 
-    if resolved.is_dir() {
-        Ok(fs::remove_dir_all(resolved)?)
+    let (_, dir) = open_scoped_dir(base)?;
+    let metadata = dir.symlink_metadata(path)?;
+    if metadata.is_dir() {
+        Ok(dir.remove_dir_all(path)?)
     } else {
-        Ok(fs::remove_file(resolved)?)
+        Ok(dir.remove_file(path)?)
     }
 }
 
@@ -214,23 +232,54 @@ pub fn remove(base: &Path, path: &str) -> Result<(), FsError> {
 /// Both `from` and `to` must be within the base scope.
 /// Uses `std::fs::rename` which is atomic on same-filesystem.
 pub fn rename(base: &Path, from: &str, to: &str) -> Result<(), FsError> {
-    let resolved_from = safe_resolve(base, from)?;
-    let resolved_to = safe_resolve_for_create(base, to)?;
+    validate_path(from).map_err(FsError::Security)?;
+    validate_path(to).map_err(FsError::Security)?;
+    let (_, dir) = open_scoped_dir(base)?;
 
-    if !resolved_from.exists() {
+    if !dir.try_exists(from)? {
         return Err(FsError::Io(std::io::Error::new(
             std::io::ErrorKind::NotFound,
             format!("source path does not exist: {from}"),
         )));
     }
 
-    if resolved_to.exists() {
+    if dir.try_exists(to)? {
         return Err(FsError::Security(format!(
             "FS_ALREADY_EXISTS: destination already exists: {to}"
         )));
     }
 
-    fs::rename(resolved_from, resolved_to)?;
+    if let Some(parent) = Path::new(to).parent()
+        && !parent.as_os_str().is_empty()
+        && parent != Path::new(".")
+    {
+        dir.create_dir_all(parent)?;
+    }
+    dir.rename(from, &dir, to)?;
+    Ok(())
+}
+
+/// Rename (move) a file or directory within the scope, replacing the
+/// destination if it already exists.
+pub fn replace_file(base: &Path, from: &str, to: &str) -> Result<(), FsError> {
+    validate_path(from).map_err(FsError::Security)?;
+    validate_path(to).map_err(FsError::Security)?;
+    let (_, dir) = open_scoped_dir(base)?;
+
+    if !dir.try_exists(from)? {
+        return Err(FsError::Io(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("source path does not exist: {from}"),
+        )));
+    }
+
+    if let Some(parent) = Path::new(to).parent()
+        && !parent.as_os_str().is_empty()
+        && parent != Path::new(".")
+    {
+        dir.create_dir_all(parent)?;
+    }
+    dir.rename(from, &dir, to)?;
     Ok(())
 }
 
@@ -238,30 +287,51 @@ pub fn rename(base: &Path, from: &str, to: &str) -> Result<(), FsError> {
 /// Both `from` and `to` must be within the base scope.
 /// Only files can be copied; use mkdir + recursive copy for directories.
 pub fn copy(base: &Path, from: &str, to: &str) -> Result<(), FsError> {
-    let resolved_from = safe_resolve(base, from)?;
-    let resolved_to = safe_resolve_for_create(base, to)?;
+    validate_path(from).map_err(FsError::Security)?;
+    validate_path(to).map_err(FsError::Security)?;
+    let (_, dir) = open_scoped_dir(base)?;
 
-    if !resolved_from.exists() {
+    if !dir.try_exists(from)? {
         return Err(FsError::Io(std::io::Error::new(
             std::io::ErrorKind::NotFound,
             format!("source path does not exist: {from}"),
         )));
     }
 
-    if !resolved_from.is_file() {
+    if !dir.metadata(from)?.is_file() {
         return Err(FsError::Security(
             "copy only supports files, not directories".to_string(),
         ));
     }
 
-    if resolved_to.exists() {
+    if dir.try_exists(to)? {
         return Err(FsError::Security(format!(
             "FS_ALREADY_EXISTS: destination already exists: {to}"
         )));
     }
 
-    fs::copy(resolved_from, resolved_to)?;
+    if let Some(parent) = Path::new(to).parent()
+        && !parent.as_os_str().is_empty()
+        && parent != Path::new(".")
+    {
+        dir.create_dir_all(parent)?;
+    }
+    dir.copy(from, &dir, to)?;
     Ok(())
+}
+
+fn open_scoped_dir(base: &Path) -> Result<(PathBuf, Dir), FsError> {
+    let canonical_base = canonical_base_dir(base)?;
+    let dir = Dir::open_ambient_dir(&canonical_base, ambient_authority()).map_err(FsError::Io)?;
+    Ok((canonical_base, dir))
+}
+
+fn scoped_path(path: &str) -> &Path {
+    if path.is_empty() {
+        Path::new(".")
+    } else {
+        Path::new(path)
+    }
 }
 
 fn ensure_scoped_directory(base: &Path, directory: &Path) -> Result<(), FsError> {

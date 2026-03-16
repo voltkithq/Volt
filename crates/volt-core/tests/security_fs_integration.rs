@@ -150,3 +150,35 @@ fn safe_resolve_rejects_symlink_escape() {
     cleanup(&sandbox);
     cleanup(&outside);
 }
+
+#[test]
+fn fs_operations_reject_symlink_escape_targets() {
+    let sandbox = create_sandbox();
+    let outside = create_sandbox();
+    let link_path = sandbox.join("escape-link");
+    std::fs::write(outside.join("secret.txt"), "outside-secret").unwrap();
+
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(&outside, &link_path).unwrap();
+    }
+
+    #[cfg(windows)]
+    {
+        if std::os::windows::fs::symlink_dir(&outside, &link_path).is_err() {
+            cleanup(&sandbox);
+            cleanup(&outside);
+            return;
+        }
+    }
+
+    assert!(read_file_text(&sandbox, "escape-link/secret.txt").is_err());
+    assert!(write_file(&sandbox, "escape-link/secret.txt", b"pwned").is_err());
+    assert_eq!(
+        std::fs::read_to_string(outside.join("secret.txt")).unwrap(),
+        "outside-secret"
+    );
+
+    cleanup(&sandbox);
+    cleanup(&outside);
+}
