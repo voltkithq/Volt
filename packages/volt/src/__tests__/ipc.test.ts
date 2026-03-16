@@ -51,6 +51,12 @@ describe('ipcMain', () => {
     );
   });
 
+  it('handle rejects reserved plugin channels', () => {
+    expect(() => ipcMain.handle('plugin:acme.search:ping', () => 'nope')).toThrow(
+      'reserved by Volt',
+    );
+  });
+
   it('removeHandler removes a handler', () => {
     ipcMain.handle('test-channel', () => 'x');
     ipcMain.removeHandler('test-channel');

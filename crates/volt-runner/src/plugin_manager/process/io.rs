@@ -1,16 +1,15 @@
 use std::collections::HashMap;
-use std::io::{BufReader, BufWriter, Read, Write};
+use std::io::{BufReader, BufWriter, Read};
 use std::process::{Child, ChildStdin, ChildStdout};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, mpsc};
 use std::thread;
 use std::time::Duration;
 
+use super::stderr_capture::read_bounded_stderr;
 use super::wire::{WireMessage, WireMessageType};
+use super::wire_io::read_wire_message;
 use crate::plugin_manager::{ExitListener, MessageListener, ProcessExitInfo};
-
-const MAX_FRAME_SIZE: usize = 16 * 1024 * 1024;
-const MAX_STDERR_CAPTURE_BYTES: usize = 256 * 1024;
 
 pub(super) struct ChildPluginProcessInner {
     pub(super) child: Mutex<Child>,
@@ -176,25 +175,6 @@ pub(super) fn wait_for_exit(exit_state: &ExitState, timeout: Duration) -> Option
     info.clone()
 }
 
-pub(super) fn write_wire_message<W: Write>(
-    writer: &mut W,
-    message: &WireMessage,
-) -> std::io::Result<()> {
-    let json = serde_json::to_string(message)
-        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
-    let body = format!("{json}\n");
-    let bytes = body.as_bytes();
-    if bytes.len() > MAX_FRAME_SIZE {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            format!("frame too large: {}", bytes.len()),
-        ));
-    }
-    writer.write_all(&(bytes.len() as u32).to_le_bytes())?;
-    writer.write_all(bytes)?;
-    writer.flush()
-}
-
 fn read_plugin_stdout(process: Arc<ChildPluginProcessInner>, stdout: ChildStdout) {
     let mut reader = BufReader::new(stdout);
     loop {
@@ -230,7 +210,7 @@ fn read_plugin_stdout(process: Arc<ChildPluginProcessInner>, stdout: ChildStdout
                 .stdin
                 .lock()
                 .ok()
-                .map(|mut stdin| write_wire_message(&mut *stdin, &response));
+                .map(|mut stdin| super::wire_io::write_wire_message(&mut *stdin, &response));
         }
     }
 }
@@ -255,76 +235,9 @@ pub(super) fn drain_waiters(waiters: &Mutex<HashMap<String, mpsc::Sender<WireMes
     }
 }
 
-fn read_wire_message<R: Read>(reader: &mut BufReader<R>) -> std::io::Result<Option<WireMessage>> {
-    let mut len_buf = [0_u8; 4];
-    match reader.read_exact(&mut len_buf) {
-        Ok(()) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::UnexpectedEof => return Ok(None),
-        Err(error) => return Err(error),
-    }
-
-    let length = u32::from_le_bytes(len_buf) as usize;
-    if length == 0 || length > MAX_FRAME_SIZE {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            format!("invalid frame length: {length}"),
-        ));
-    }
-
-    let mut body = vec![0_u8; length];
-    reader.read_exact(&mut body)?;
-    let raw = String::from_utf8(body)
-        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
-    let trimmed = raw.trim_end_matches('\n');
-    serde_json::from_str(trimmed)
-        .map(Some)
-        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
-}
-
-fn read_bounded_stderr(stderr: &mut impl Read) -> String {
-    let mut captured = Vec::with_capacity(4096);
-    let mut chunk = [0_u8; 8192];
-    let mut truncated = false;
-
-    loop {
-        match stderr.read(&mut chunk) {
-            Ok(0) => break,
-            Ok(read) => {
-                let remaining = MAX_STDERR_CAPTURE_BYTES.saturating_sub(captured.len());
-                if remaining == 0 {
-                    truncated = true;
-                    break;
-                }
-                let to_copy = read.min(remaining);
-                captured.extend_from_slice(&chunk[..to_copy]);
-                if to_copy < read {
-                    truncated = true;
-                    break;
-                }
-            }
-            Err(_) => break,
-        }
-    }
-
-    let mut text = String::from_utf8_lossy(&captured).into_owned();
-    if truncated {
-        text.push_str("\n[volt] plugin stderr truncated at 262144 bytes");
-    }
-    text
-}
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn bounded_stderr_reader_caps_capture_size() {
-        let oversized = vec![b'x'; MAX_STDERR_CAPTURE_BYTES + 1024];
-        let mut reader = std::io::Cursor::new(oversized);
-        let captured = read_bounded_stderr(&mut reader);
-
-        assert!(captured.len() >= MAX_STDERR_CAPTURE_BYTES);
-        assert!(captured.contains("plugin stderr truncated"));
-    }
 
     #[test]
     fn drain_waiters_disconnects_pending_receivers() {

@@ -62,6 +62,24 @@ fn ipc_main_rejects_reserved_volt_channels() {
 }
 
 #[test]
+fn ipc_main_rejects_reserved_plugin_channels() {
+    let runtime = JsRuntimeManager::start().expect("js runtime start");
+    let client = runtime.client();
+
+    let error = client
+        .eval_promise_string(
+            "(async () => {
+                    const { ipcMain } = await import('volt:ipc');
+                    ipcMain.handle('plugin:acme.search:ping', () => ({ ok: true }));
+                    return 'unreachable';
+                })()",
+        )
+        .expect_err("reserved plugin channel should be rejected");
+
+    assert!(error.contains("reserved by Volt"));
+}
+
+#[test]
 fn ipc_roundtrip_handles_reserved_native_fast_path_without_js_handler() {
     let runtime = JsRuntimeManager::start().expect("js runtime start");
     let response = dispatch_ipc_request(

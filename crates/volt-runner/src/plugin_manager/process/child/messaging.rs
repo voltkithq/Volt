@@ -1,8 +1,9 @@
 use std::sync::{Arc, mpsc};
 use std::time::Duration;
 
-use crate::plugin_manager::process::io::{ChildPluginProcessInner, write_wire_message};
+use crate::plugin_manager::process::io::ChildPluginProcessInner;
 use crate::plugin_manager::process::wire::WireMessage;
+use crate::plugin_manager::process::wire_io::write_wire_message;
 use crate::plugin_manager::{PLUGIN_RUNTIME_ERROR_CODE, PluginRuntimeError};
 
 pub(super) fn send_and_wait(
