@@ -44,7 +44,8 @@ npm run package
 | Binary size | ~150 MB+ | ~3-10 MB | ~21 MB (includes Boa JS engine) |
 | Backend language | JavaScript | Rust | TypeScript orchestration + Rust-backed APIs |
 | Learning curve | Low (all JS) | Steep (must write Rust) | Low (all TypeScript) |
-| Permission model | None by default | Capability config | Capability config |
+| Permission model | None by default | Capability config | Capability config + grant delegation |
+| Plugin system | None built-in | None built-in | Process-isolated, 15ms cold start |
 | API style | `require('electron')` | Rust commands | `ipcMain`, `BrowserWindow`, `data`, `workflow` |
 
 Volt sits between Electron and Tauri. You get Electron-style TypeScript app authoring with a Rust-backed runtime, capability-based permissions by default, and native fast paths for heavy operations. Volt's binary is larger than Tauri because it embeds the Boa JavaScript engine for backend TypeScript execution — the tradeoff for not requiring app developers to write Rust. Volt is not trying to be a drop-in Electron replacement for arbitrary main-process JavaScript workloads.
@@ -70,7 +71,8 @@ Volt sits between Electron and Tauri. You get Electron-style TypeScript app auth
 - **Built-in updater** -- Ed25519 signed updates with SHA-256 verification, no third-party services required
 - **Embedded SQLite** -- `volt:db` module for local storage without external dependencies
 - **Secure file access** -- scoped `volt:fs` with grant tokens, `ScopedFs` handles, and file watching
-- **Dev experience** -- Vite-powered frontend HMR, backend hot-reload on save, inline sourcemaps for stack traces
+- **Plugin system** -- process-isolated plugins with 15ms cold start, capability-based grants, lifecycle events, and CLI tooling (`volt plugin init/build/test/doctor`)
+- **Dev experience** -- Vite-powered frontend HMR, backend hot-reload on save, plugin watch/reload, inline sourcemaps for stack traces
 - **Cross-platform** -- Windows, macOS (Intel + Apple Silicon), Linux
 
 ## Prerequisites
@@ -135,6 +137,59 @@ ipcMain.handle('open-folder', async () => {
 
 > See the [file-explorer example](examples/file-explorer/) for a complete app with folder picking, file listing, and live file watching.
 
+### Plugins
+
+Extend your app with process-isolated plugins. Each plugin runs in its own sandboxed process with a 15ms cold start:
+
+```bash
+# Scaffold a plugin
+volt plugin init my-plugin
+
+# Build, test, and validate
+cd my-plugin
+volt plugin build
+volt plugin test
+volt plugin doctor
+```
+
+Plugin code:
+
+```typescript
+// plugins/my-plugin/src/plugin.ts
+import { definePlugin } from 'volt:plugin';
+
+export default definePlugin({
+  async activate(context) {
+    context.commands.register('greet', async (args) => {
+      return { message: `Hello, ${args?.name ?? 'World'}!` };
+    });
+
+    context.ipc.handle('search', async (args) => {
+      return { results: [] };
+    });
+  },
+
+  async deactivate(context) {
+    context.log.info('Plugin shutting down');
+  },
+});
+```
+
+App config:
+
+```typescript
+// volt.config.ts
+export default defineConfig({
+  plugins: {
+    enabled: ['my-plugin'],
+    grants: { 'my-plugin': ['fs'] },
+    pluginDirs: ['./plugins'],
+  },
+});
+```
+
+Plugins get capability-based permissions (intersection of manifest, host grants, and app permissions), revocable filesystem grants, durable key-value storage, and lifecycle event observability. After 3 consecutive failures, a plugin is automatically disabled without affecting the host app.
+
 ## Status
 
 Pre-1.0 release (`0.1.x`). Core APIs are stable enough to build against, but Volt is still defining its exact product boundaries. The current direction is clear: TypeScript-first app authoring, Rust-backed performance for heavy paths, and capability-based desktop APIs with a smaller footprint than Electron.
@@ -148,6 +203,7 @@ Pre-1.0 release (`0.1.x`). Core APIs are stable enough to build against, but Vol
 - [API Reference](docs/api/README.md)
 - [Security Model](docs/security.md)
 - [Architecture](docs/architecture.md)
+- [Plugin Development](docs/plugin-cli.md)
 - [Framework Comparison](docs/hard-parts-comparison.md)
 
 ## Contributing
